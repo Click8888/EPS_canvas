@@ -1,0 +1,411 @@
+/* SqlPanel.css - Стили для компонента SqlPanel */
+
+/* Основной контейнер SQL панели */
+.sql-panel-grafana {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #1e1e1e;
+  border-top: 1px solid #444;
+  z-index: 1010;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  min-height: 300px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Хендл для изменения размера */
+.sql-panel-resize-handle-top {
+  position: relative;
+  height: 12px;
+  background: #2c2c2c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #444;
+  transition: background-color 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 1020;
+}
+
+.sql-panel-resize-handle-top:hover {
+  background: #3a3a3a;
+}
+
+.resize-handle-line {
+  width: 40px;
+  height: 4px;
+  background: #666;
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.sql-panel-resize-handle-top:hover .resize-handle-line {
+  background: #888;
+}
+
+.sql-panel-resize-handle-top:active .resize-handle-line {
+  background: #aaa;
+}
+
+/* Заголовок SQL панели */
+.sql-panel-header-grafana {
+  background: #202226;
+  border-bottom: 1px solid #404040;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.sql-panel-title {
+  display: flex;
+  align-items: center;
+  color: #d8d9da;
+  font-weight: 500;
+  font-size: 16px;
+}
+
+/* Основной контент SQL панели */
+.sql-panel-content-grafana {
+  display: flex;
+  flex: 1;
+  min-height: 200px;
+  overflow: hidden;
+}
+
+/* Контейнер редактора SQL */
+.sql-editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid #404040;
+}
+
+.sql-editor-header {
+  background: #2c3235;
+  padding: 8px 16px;
+  border-bottom: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.sql-editor-tab {
+  color: #d8d9da;
+  padding: 4px 12px;
+  border-radius: 3px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sql-editor-tab.active {
+  background: #404040;
+  color: #fff;
+}
+
+.sql-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px;
+}
+
+/* Контейнер для выбора графика */
+.chart-selector-container {
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.chart-selector-container .form-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #d8d9da;
+  margin-bottom: 4px;
+}
+
+.chart-selector-container .form-select {
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  color: white;
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.chart-selector-container .form-select:focus {
+  border-color: #2962FF;
+  box-shadow: 0 0 0 0.2rem rgba(41, 98, 255, 0.25);
+}
+
+.chart-selector-container .form-select:disabled {
+  background-color: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+/* Сайдбар с историей */
+.sql-panel-sidebar {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #252525;
+}
+
+.sidebar-section {
+  padding: 12px;
+  border-bottom: 1px solid #404040;
+}
+
+.sidebar-section h6 {
+  color: #d8d9da;
+  font-size: 14px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.query-history-grafana {
+  flex: 1;
+  overflow-y: auto;
+  max-height: none;
+}
+
+.history-item-grafana {
+  padding: 8px;
+  margin-bottom: 6px;
+  background: #3c3c3c;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 3px solid #5794f2;
+}
+
+.history-item-grafana:hover {
+  background: #4a4a4a;
+  transform: translateX(2px);
+}
+
+.history-item-grafana.history-error {
+  border-left-color: #dc3545;
+}
+
+.history-query {
+  color: #d8d9da;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+/* Футер SQL панели */
+.sql-panel-footer-grafana {
+  background: #202226;
+  border-top: 1px solid #404040;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.footer-left {
+  color: #8c8c8c;
+  font-size: 12px;
+  flex: 1;
+}
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Индикатор загрузки и ошибки */
+.sql-panel-loading {
+  padding: 12px;
+  background: rgba(87, 148, 242, 0.1);
+  border-top: 1px solid #404040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d8d9da;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.sql-panel-error {
+  margin: 0;
+  padding: 12px;
+  background: rgba(220, 53, 69, 0.1);
+  border: none;
+  border-radius: 0;
+  border-top: 1px solid #dc3545;
+  color: #ff6b6b;
+  font-size: 14px;
+  flex-shrink: 0;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.sql-panel-error .bi {
+  font-size: 16px;
+}
+
+/* Кнопки в стиле Grafana */
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.btn-outline-secondary {
+  border-color: #404040;
+  color: #d8d9da;
+  background: transparent;
+}
+
+.btn-outline-secondary:hover {
+  background-color: #404040;
+  border-color: #5794f2;
+  color: #fff;
+}
+
+.btn-outline-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #5794f2 0%, #3274d9 100%);
+  border: none;
+  font-weight: 500;
+  min-width: 100px;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #3274d9 0%, #1c5cbf 100%);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Адаптивность */
+@media (max-width: 968px) {
+  .sql-panel-content-grafana {
+    flex-direction: column;
+  }
+  
+  .sql-panel-sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #404040;
+    max-height: 200px;
+  }
+  
+  .sql-editor-container {
+    border-right: none;
+    border-bottom: 1px solid #404040;
+  }
+}
+
+@media (max-width: 768px) {
+  .sql-panel-footer-grafana {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .footer-right {
+    align-self: stretch;
+    justify-content: flex-end;
+  }
+  
+  .sql-panel-title span {
+    display: none;
+  }
+}
+
+/* Скрытие скроллбаров для более чистого вида */
+.query-history-grafana::-webkit-scrollbar {
+  width: 6px;
+}
+
+.query-history-grafana::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+
+.query-history-grafana::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+.query-history-grafana::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
+
+/* Дополнительные стили для элементов внутри SqlPanel */
+.query-item {
+  cursor: pointer;
+  border: 1px solid #444;
+  transition: all 0.2s ease;
+}
+
+.query-item:hover {
+  background-color: #3a3a3a !important;
+}
+
+.query-item.bg-primary {
+  border-color: #5794f2;
+}
+
+/* Стили для спиннеров */
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+.text-muted {
+  color: #8c8c8c !important;
+}
+
+.text-primary {
+  color: #5794f2 !important;
+}
+
+.text-success {
+  color: #28a745 !important;
+}
+
+.text-danger {
+  color: #dc3545 !important;
+}
+
+.text-info {
+  color: #17a2b8 !important;
+}
+
+.bg-dark {
+  background-color: #2a2a2a !important;
+}
+
+.bg-primary {
+  background-color: #5794f2 !important;
+}

@@ -1,0 +1,103 @@
+.main-container {
+  background: linear-gradient(135deg, #474747 0%, #2c3e50 100%);
+  overflow:hidden;
+}
+
+.main-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  overflow:hidden;
+}
+
+.main-subtitle {
+  font-size: 1.2rem;
+  color: #ecf0f1;
+  opacity: 0.9;
+  overflow:hidden;
+}
+
+.feature-card {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  transition: all 0.3s ease;
+  border-radius: 15px;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.feature-icon {
+  color: #133592 !important;
+}
+
+.card-title {
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.card-text {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.btn-primary {
+  background: linear-gradient(45deg, #133592, #1e4fd8);
+  border: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(19, 53, 146, 0.3);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(45deg, #1e4fd8, #133592);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(19, 53, 146, 0.4);
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .main-title {
+    font-size: 2rem;
+  }
+  
+  .main-subtitle {
+    font-size: 1rem;
+  }
+  
+  .feature-card {
+    margin-bottom: 1rem;
+  }
+  
+  .btn-lg {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+  }
+}
+
+/* Анимации */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feature-card {
+  animation: fadeInUp 0.6s ease forwards;
+}
+
+.feature-card:nth-child(1) { animation-delay: 0.1s; }
+.feature-card:nth-child(2) { animation-delay: 0.2s; }
+.feature-card:nth-child(3) { animation-delay: 0.3s; }
+.feature-card:nth-child(4) { animation-delay: 0.4s; }
+.feature-card:nth-child(5) { animation-delay: 0.5s; }
+.feature-card:nth-child(6) { animation-delay: 0.6s; }
