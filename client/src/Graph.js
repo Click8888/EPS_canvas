@@ -26,16 +26,272 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [nodeSize, setNodeSize] = useState({ width: 400, height: 300 });
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
-    interval: 100, // Интервал обновления в мс (от 10 до 1000)
+    interval: 1000, // Интервал обновления из БД в мс
     isAutoUpdate: false, // Автоматическое обновление
-    isSettingsOpen: false, // Открыты ли настройки
+    isSettingsOpen: false,
+    lastUpdateTime: null // Время последнего обновления
   });
-  const [intervalInput, setIntervalInput] = useState("100"); // Для текстового ввода
+  const [intervalInput, setIntervalInput] = useState("1000");
+  const [dataSourceInfo, setDataSourceInfo] = useState(null);
+  const [pollingIntervalId, setPollingIntervalId] = useState(null);
+  const [wsConnection, setWsConnection] = useState(null);
   
   const nodeRef = useRef(null);
   const updateIntervalRef = useRef(null);
   const settingsPanelRef = useRef(null);
   
+  // Функция для загрузки данных из БД
+  const fetchDataFromDB = useCallback(async () => {
+    if (!dataSourceInfo || !dataSourceInfo.table || !dataSourceInfo.xAxis || !dataSourceInfo.yAxis) {
+      console.log('Нет информации об источнике данных');
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      
+      // Формируем SQL запрос БЕЗ лимита
+      let sql = `SELECT * FROM ${dataSourceInfo.table}`;
+      
+      // Если есть время последнего обновления, фильтруем новые данные
+      if (updateConfig.lastUpdateTime) {
+        const lastTime = updateConfig.lastUpdateTime.toISOString().slice(0, 19).replace('T', ' ');
+        sql += ` WHERE ${dataSourceInfo.xAxis} > '${lastTime}'`;
+      }
+      
+      sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
+      
+      console.log('Выполняем SQL:', sql);
+      
+      const response = await fetch('http://localhost:8080/api/execute-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+
+      if (!response.ok) throw new Error('Ошибка загрузки данных из БД');
+      
+      const result = await response.json();
+      const newData = result.data || result;
+      
+      if (newData && newData.length > 0) {
+        console.log(`Получено ${newData.length} новых записей из БД`);
+        
+        // Форматируем данные для графика
+        const formattedData = newData
+          .filter(row => row[dataSourceInfo.xAxis] != null && row[dataSourceInfo.yAxis] != null)
+          .map((row, index) => {
+            const xValue = row[dataSourceInfo.xAxis];
+            const yValue = parseFloat(row[dataSourceInfo.yAxis]);
+            
+            // Преобразуем время
+            let timeValue;
+            if (xValue instanceof Date) {
+              timeValue = xValue.getTime() / 1000;
+            } else if (typeof xValue === 'string') {
+              // Пытаемся разобрать строку времени
+              const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
+              if (timeMatch) {
+                const hours = parseInt(timeMatch[1]) || 0;
+                const minutes = parseInt(timeMatch[2]) || 0;
+                const seconds = parseInt(timeMatch[3]) || 0;
+                const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
+                timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+              } else {
+                // Пытаемся преобразовать в timestamp
+                const date = new Date(xValue);
+                if (!isNaN(date.getTime())) {
+                  timeValue = date.getTime() / 1000;
+                } else {
+                  timeValue = parseFloat(xValue) || index;
+                }
+              }
+            } else if (typeof xValue === 'number') {
+              timeValue = xValue;
+            } else {
+              timeValue = index;
+            }
+            
+            return {
+              time: timeValue,
+              value: isNaN(yValue) ? 0 : yValue,
+              originalTime: xValue,
+              originalValue: row[dataSourceInfo.yAxis],
+              seriesId: 'database',
+              timestamp: Date.now(),
+              overload: row.is_overload || false
+            };
+          });
+        
+        // Сортируем по времени
+        formattedData.sort((a, b) => a.time - b.time);
+        
+        // Обновляем данные графика
+        setChartData(prev => {
+          const combined = [...prev];
+          
+          formattedData.forEach(newPoint => {
+            // Проверяем, нет ли уже такой точки
+            const existingIndex = combined.findIndex(p => 
+              Math.abs(p.time - newPoint.time) < 0.001
+            );
+            
+            if (existingIndex === -1) {
+              combined.push(newPoint);
+            } else {
+              combined[existingIndex] = newPoint;
+            }
+          });
+          
+          // Сортируем
+          combined.sort((a, b) => a.time - b.time);
+          return combined;
+        });
+        
+        // Обновляем время последнего обновления
+        if (formattedData.length > 0) {
+          const lastRow = newData[newData.length - 1];
+          const lastTime = lastRow[dataSourceInfo.xAxis];
+          
+          try {
+            const date = new Date(lastTime);
+            if (!isNaN(date.getTime())) {
+              setUpdateConfig(prev => ({
+                ...prev,
+                lastUpdateTime: date
+              }));
+            }
+          } catch (e) {
+            console.error('Ошибка парсинга времени:', e);
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('Ошибка загрузки данных из БД:', error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [dataSourceInfo, updateConfig.lastUpdateTime]);
+
+  // Инициализация данных графика
+  useEffect(() => {
+    // Проверяем данные из localStorage
+    const savedData = localStorage.getItem(`chartData_${id}`);
+    if (savedData) {
+      try {
+        const parsedData = JSON.parse(savedData);
+        setChartData(parsedData.data || []);
+        setDataSourceInfo(parsedData.params || null);
+        
+        // Устанавливаем время последнего обновления
+        if (parsedData.data && parsedData.data.length > 0) {
+          const lastData = parsedData.data[parsedData.data.length - 1];
+          if (lastData.originalTime) {
+            try {
+              const date = new Date(lastData.originalTime);
+              if (!isNaN(date.getTime())) {
+                setUpdateConfig(prev => ({
+                  ...prev,
+                  lastUpdateTime: date
+                }));
+              }
+            } catch (e) {
+              console.error('Ошибка установки времени:', e);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Ошибка загрузки сохраненных данных:', e);
+      }
+    }
+    
+    // Используем данные из props
+    if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
+      setChartData(data.initialData);
+      
+      // Сохраняем в localStorage
+      localStorage.setItem(`chartData_${id}`, JSON.stringify({
+        data: data.initialData,
+        params: data.dataSourceInfo || null
+      }));
+    }
+    
+    if (data.dataSourceInfo) {
+      setDataSourceInfo(data.dataSourceInfo);
+    }
+    
+    if (data.series) setChartSeries(data.series);
+    if (data.width && data.height) {
+      setNodeSize({ width: data.width, height: data.height });
+    }
+    
+    setIntervalInput(updateConfig.interval.toString());
+  }, [data.initialData, data.series, data.width, data.height, data.dataSourceInfo, id]);
+
+  // Запуск/остановка опроса БД
+  useEffect(() => {
+    if (updateConfig.isAutoUpdate && dataSourceInfo) {
+      // Первый запрос сразу
+      fetchDataFromDB();
+      
+      // Затем запускаем интервал
+      const interval = setInterval(() => {
+        fetchDataFromDB();
+      }, updateConfig.interval);
+      
+      setPollingIntervalId(interval);
+      
+      return () => {
+        if (interval) {
+          clearInterval(interval);
+        }
+      };
+    } else if (pollingIntervalId) {
+      clearInterval(pollingIntervalId);
+      setPollingIntervalId(null);
+    }
+  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, fetchDataFromDB]);
+
+  // WebSocket для получения уведомлений о новых данных
+  useEffect(() => {
+    if (updateConfig.isAutoUpdate) {
+      const ws = new WebSocket('ws://localhost:8080/api/ws');
+      
+      ws.onopen = () => {
+        console.log('WebSocket подключен для автообновления');
+        setWsConnection(ws);
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'new_data') {
+            // Если пришло уведомление о новых данных, сразу загружаем их
+            fetchDataFromDB();
+          }
+        } catch (error) {
+          console.error('Ошибка обработки WebSocket сообщения:', error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket соединение закрыто');
+        setWsConnection(null);
+      };
+      
+      return () => {
+        if (ws) {
+          ws.close();
+        }
+      };
+    }
+  }, [updateConfig.isAutoUpdate, fetchDataFromDB]);
+
   // Закрытие панели настроек при клике вне её
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -61,50 +317,20 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     };
   }, [updateConfig.isSettingsOpen]);
 
-  // Инициализация данных графика
-  useEffect(() => {
-    if (data.initialData) setChartData(data.initialData);
-    if (data.series) setChartSeries(data.series);
-    if (data.width && data.height) {
-      setNodeSize({ width: data.width, height: data.height });
-    }
-    // Инициализируем текстовое поле
-    setIntervalInput(updateConfig.interval.toString());
-  }, [data.initialData, data.series, data.width, data.height]);
-
-
-  // Функция для загрузки данных графика
-  const fetchChartData = useCallback(async () => {
-    try {
-      // Можно заменить на реальный API запрос
-      const newDataPoint = {
-        time: Date.now() / 1000,
-        value: Math.random() * 100 + 50,
-        overload: Math.random() > 0.9
-      };
-      
-      setChartData(prev => {
-        const newData = [...prev, newDataPoint];
-        return newData.slice(-1000);
-      });
-      
-      setIsUpdating(true);
-      setTimeout(() => setIsUpdating(false), 50);
-      
-    } catch (error) {
-      console.error('Ошибка загрузки данных:', error);
-      setIsUpdating(false);
-    }
-  }, []);
-
   // Тоггл автоматического обновления
   const toggleAutoUpdate = useCallback(() => {
+    const newState = !updateConfig.isAutoUpdate;
     setUpdateConfig(prev => ({
       ...prev,
-      isAutoUpdate: !prev.isAutoUpdate,
-      isSettingsOpen: prev.isAutoUpdate ? false : prev.isSettingsOpen
+      isAutoUpdate: newState
     }));
-  }, []);
+    
+    if (newState && dataSourceInfo) {
+      console.log('Автообновление включено, интервал:', updateConfig.interval, 'мс');
+    } else {
+      console.log('Автообновление выключено');
+    }
+  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo]);
 
   // Открыть/закрыть настройки обновления
   const toggleSettings = useCallback(() => {
@@ -122,19 +348,34 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     // Валидация и установка интервала
     const numValue = parseInt(value);
     if (!isNaN(numValue)) {
-      const validatedValue = Math.max(10, Math.min(1000, numValue));
+      const validatedValue = Math.max(100, Math.min(10000, numValue));
       setUpdateConfig(prev => ({
         ...prev,
         interval: validatedValue
       }));
+      
+      // Если автообновление активно, перезапускаем интервал
+      if (pollingIntervalId && updateConfig.isAutoUpdate) {
+        clearInterval(pollingIntervalId);
+        setPollingIntervalId(null);
+        
+        setTimeout(() => {
+          if (updateConfig.isAutoUpdate) {
+            const newInterval = setInterval(() => {
+              fetchDataFromDB();
+            }, validatedValue);
+            setPollingIntervalId(newInterval);
+          }
+        }, 100);
+      }
     }
-  }, []);
+  }, [intervalInput, updateConfig.interval, pollingIntervalId, updateConfig.isAutoUpdate, fetchDataFromDB]);
 
   // Применить интервал при потере фокуса
   const handleIntervalInputBlur = useCallback(() => {
     const numValue = parseInt(intervalInput);
     
-    if (isNaN(numValue) || numValue < 10 || numValue > 1000) {
+    if (isNaN(numValue) || numValue < 100 || numValue > 10000) {
       // Возвращаем к предыдущему значению
       setIntervalInput(updateConfig.interval.toString());
     } else {
@@ -347,7 +588,22 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
         <div className="chart-node-title">
           <i className="bi bi-bar-chart"></i>
           <span>{data.label || 'График'}</span>
-          <span className="resize-indicator" style={{ marginLeft: 'auto', fontSize: '11px', opacity: 0.7 }}>
+          {dataSourceInfo && (
+            <span className="data-source-badge ms-2">
+              <i className="bi bi-database me-1"></i>
+              {dataSourceInfo.table}: {dataSourceInfo.xAxis} → {dataSourceInfo.yAxis}
+            </span>
+          )}
+          <span className="data-count-badge ms-1">
+            {chartData.length} точек
+            {updateConfig.isAutoUpdate && (
+              <span className="ms-1" style={{ color: '#28a745' }}>
+                <i className="bi bi-arrow-clockwise me-1"></i>
+                авто
+              </span>
+            )}
+          </span>
+          <span className="resize-indicator">
             Размер: {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
           </span>
         </div>
@@ -358,7 +614,10 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           <button
             className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}
-            title={updateConfig.isAutoUpdate ? "Остановить обновление" : "Запустить обновление"}
+            disabled={!dataSourceInfo}
+            title={dataSourceInfo ? 
+              (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД") : 
+              "Сначала выберите источник данных"}
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
@@ -378,7 +637,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       {updateConfig.isSettingsOpen && (
         <div ref={settingsPanelRef} className="update-settings-panel">
           <div className="settings-header">
-            <small>Настройки обновления данных</small>
+            <small>Настройки обновления из БД</small>
             <button 
               className="btn-close btn-close-white btn-sm"
               onClick={toggleSettings}
@@ -389,7 +648,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           <div className="settings-body">
             <div className="mb-3">
               <label className="form-label" style={{ fontSize: '12px', marginBottom: '8px' }}>
-                Интервал обновления (10-1000 мс)
+                Интервал опроса БД (100-10000 мс)
               </label>
               <div className="input-group input-group-sm">
                 <input
@@ -398,9 +657,9 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
                   value={intervalInput}
                   onChange={handleIntervalInputChange}
                   onBlur={handleIntervalInputBlur}
-                  min="10"
-                  max="1000"
-                  step="10"
+                  min="100"
+                  max="10000"
+                  step="100"
                   style={{
                     textAlign: 'center',
                     backgroundColor: '#333',
@@ -414,10 +673,39 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
                 </span>
               </div>
               <div className="form-text text-muted mt-1" style={{ fontSize: '10px' }}>
-                Введите значение от 10 до 1000 миллисекунд
+                Частота опроса базы данных для новых записей
               </div>
             </div>
-              
+            
+            {dataSourceInfo && (
+              <div className="mb-3">
+                <div className="alert alert-info py-1 px-2" style={{ fontSize: '11px' }}>
+                  <i className="bi bi-info-circle me-1"></i>
+                  Источник: {dataSourceInfo.table}<br/>
+                  Ось X: {dataSourceInfo.xAxis}<br/>
+                  Ось Y: {dataSourceInfo.yAxis}<br/>
+                  Всего точек: {chartData.length}
+                </div>
+              </div>
+            )}
+            
+            <button
+              className="btn btn-sm btn-outline-info w-100"
+              onClick={fetchDataFromDB}
+              disabled={isUpdating || !dataSourceInfo}
+            >
+              {isUpdating ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                  Загрузка...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-arrow-clockwise me-1"></i>
+                  Загрузить сейчас
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
@@ -431,8 +719,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
             type={data.chartType || 'linear'}
             isUpdating={isUpdating}
             onSeriesToggle={() => {}}
-            chartId={data.id || 'chart-1'}
-            realTime={data.realTime || false}
+            chartId={id}
+            realTime={updateConfig.isAutoUpdate}
             dataType={data.dataType || 'current'}
             containerWidth={nodeSize.width}
             containerHeight={nodeSize.height}
@@ -536,7 +824,7 @@ const DataSourceNode = ({ data, isConnectable, selected, id }) => {
         minWidth: 200,
         minHeight: 150
       }}
-      onContextMenu={handleContextMenu} // ДОБАВИТЬ ЭТО
+      onContextMenu={handleContextMenu}
     >
       {selected && (
         <NodeResizer
@@ -690,7 +978,7 @@ const ProcessorNode = ({ data, isConnectable, selected, id }) => {
         minWidth: 200,
         minHeight: 150
       }}
-      onContextMenu={handleContextMenu} // ДОБАВИТЬ ЭТО
+      onContextMenu={handleContextMenu}
     >
       {selected && (
         <NodeResizer
@@ -782,6 +1070,37 @@ const Graph = () => {
   const [nodeCounter, setNodeCounter] = useState(1);
   const { updateNode } = useReactFlow();
 
+  // Глобальная функция для обновления данных узла
+  useEffect(() => {
+    // Экспортируем функцию для доступа из Sidebar
+    window.updateNodeData = (nodeId, data) => {
+      setNodes((nds) => 
+        nds.map((node) => {
+          if (node.id === nodeId && node.type === 'chartNode') {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                initialData: data,
+                dataSourceInfo: data.sourceInfo || {
+                  table: 'unknown',
+                  xAxis: 'time',
+                  yAxis: 'value'
+                }
+              }
+            };
+          }
+          return node;
+        })
+      );
+      console.log(`Данные обновлены для узла ${nodeId}:`, data.length, 'точек');
+    };
+    
+    return () => {
+      delete window.updateNodeData;
+    };
+  }, [setNodes]);
+
   // Обработчик соединений
   const onConnect = useCallback(
     (params) => {
@@ -871,7 +1190,31 @@ const Graph = () => {
         dataType: 'Случайные данные',
         width: 300,
         height: 200,
-        onDataGenerate: (data) => console.log(`Data from ${newNodeId}:`, data)
+        onDataGenerate: (data) => {
+          // Найти связанные узлы графика и обновить их данные
+          const connectedNodes = edges
+            .filter(edge => edge.source === newNodeId)
+            .map(edge => nodes.find(node => node.id === edge.target));
+          
+          connectedNodes.forEach(node => {
+            if (node.type === 'chartNode') {
+              setNodes((nds) => 
+                nds.map((n) => {
+                  if (n.id === node.id) {
+                    return {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        initialData: [...(n.data.initialData || []), ...data]
+                      }
+                    };
+                  }
+                  return n;
+                })
+              );
+            }
+          });
+        }
       },
       style: { 
         width: 300, 
@@ -881,7 +1224,7 @@ const Graph = () => {
     
     setNodes((nds) => [...nds, newNode]);
     setNodeCounter((prev) => prev + 1);
-  }, [nodeCounter, setNodes]);
+  }, [nodeCounter, setNodes, edges, nodes]);
 
   // Добавление нового обработчика
   const addProcessorNode = useCallback(() => {
@@ -1007,7 +1350,6 @@ const Graph = () => {
           snapGrid={[15, 15]}
           proOptions={{ hideAttribution: false }}
           nodesResizable={true}
-          // ДОБАВИТЬ ЭТО
           onPaneContextMenu={(e) => e.preventDefault()}
           onNodeContextMenu={(e, node) => {
             e.preventDefault();

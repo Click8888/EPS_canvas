@@ -78,14 +78,15 @@ const Sidebar = ({
     }
   }, []);
 
-  // Функция загрузки данных выбранной таблицы
+    // Функция загрузки данных выбранной таблицы
   const loadTableData = useCallback(async (tableName) => {
     if (!tableName) return;
     
     try {
       setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
       
-      const sql = `SELECT * FROM ${tableName} LIMIT 100`;
+      // УБИРАЕМ ЛИМИТ 100
+      const sql = `SELECT * FROM ${tableName} ORDER BY 1 ASC`; // Сортируем по первому столбцу
       
       const response = await fetch(`${API_BASE_URL}/execute-query`, {
         method: 'POST',
@@ -105,8 +106,17 @@ const Sidebar = ({
           selectedTable: tableName,
           tableData: data,
           columns: columns,
-          xAxisColumn: columns[0] || '',
-          yAxisColumn: columns[1] || '',
+          xAxisColumn: columns.find(col => 
+            col.toLowerCase().includes('time') || 
+            col.toLowerCase().includes('date') ||
+            col.toLowerCase().includes('timestamp')
+          ) || columns[0] || '',
+          yAxisColumn: columns.find(col => 
+            col.toLowerCase().includes('value') || 
+            col.toLowerCase().includes('current') ||
+            col.toLowerCase().includes('voltage') ||
+            col.toLowerCase().includes('measurement')
+          ) || columns[1] || '',
           isLoadingParams: false
         }));
       } else {
@@ -138,7 +148,7 @@ const Sidebar = ({
     }
   }, []);
 
-  // Функция для применения параметров графика к узлу
+// Функция для применения параметров графика к узлу
   const applyChartParams = useCallback(() => {
     if (!selectedNode || !chartParams.selectedTable) return;
     
@@ -155,63 +165,85 @@ const Sidebar = ({
     // Форматируем данные для графика
     const formattedData = tableData
       .filter(row => row[xAxisColumn] != null && row[yAxisColumn] != null)
-      .map(row => {
+      .map((row, index) => {
         // Пытаемся преобразовать значения в числа для оси Y
         const yValue = parseFloat(row[yAxisColumn]);
-        const xValue = row[xAxisColumn];
         
         // Для оси X: если это дата/время, преобразуем в секунды
         let timeValue;
-        if (xValue instanceof Date || (typeof xValue === 'string' && xValue.includes(':'))) {
-          // Преобразование времени в секунды
-          if (xValue instanceof Date) {
-            timeValue = xValue.getTime() / 1000;
+        const xValue = row[xAxisColumn];
+        
+        if (xValue instanceof Date) {
+          timeValue = xValue.getTime() / 1000;
+        } else if (typeof xValue === 'string') {
+          // Пытаемся разобрать строку времени HH:MM:SS.mmm
+          const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
+          if (timeMatch) {
+            const hours = parseInt(timeMatch[1]) || 0;
+            const minutes = parseInt(timeMatch[2]) || 0;
+            const seconds = parseInt(timeMatch[3]) || 0;
+            const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
+            timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
           } else {
-            // Пытаемся разобрать строку времени
-            const timeParts = xValue.split(':').map(Number);
-            if (timeParts.length >= 3) {
-              timeValue = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
-            } else if (timeParts.length === 2) {
-              timeValue = timeParts[0] * 60 + timeParts[1];
-            } else {
-              timeValue = parseFloat(xValue) || 0;
-            }
+            // Пытаемся преобразовать в число
+            timeValue = parseFloat(xValue) || 0;
           }
+        } else if (typeof xValue === 'number') {
+          timeValue = xValue;
         } else {
-          timeValue = parseFloat(xValue) || 0;
+          // Используем индекс как время
+          timeValue = index;
         }
         
         return {
           time: timeValue,
           value: isNaN(yValue) ? 0 : yValue,
           originalTime: xValue,
-          originalValue: row[yAxisColumn]
+          originalValue: row[yAxisColumn],
+          seriesId: 'database',
+          timestamp: Date.now()
         };
       });
     
     // Сортируем по времени
     formattedData.sort((a, b) => a.time - b.time);
     
-    // Обновляем данные узла (здесь нужно реализовать логику обновления узла)
-    // Например, можно передать callback через props или использовать контекст
-    
-    console.log('Применены параметры графика:', {
+    // Создаем информацию об источнике данных
+    const sourceInfo = {
       table: chartParams.selectedTable,
       xAxis: xAxisColumn,
       yAxis: yAxisColumn,
-      dataCount: formattedData.length
-    });
+      dataPoints: formattedData.length
+    };
     
-    // Здесь можно вызвать функцию обновления узла, если она передана через props
-    if (selectedNode.data?.onDataUpdate) {
-      selectedNode.data.onDataUpdate(formattedData);
+    // Используем глобальную функцию для обновления узла
+    if (window.updateNodeData && selectedNode) {
+      window.updateNodeData(selectedNode.id, formattedData);
+      
+      // Также сохраняем информацию об источнике
+      setTimeout(() => {
+        window.updateNodeData(selectedNode.id, {
+          ...formattedData,
+          sourceInfo // Добавляем метаданные
+        });
+      }, 100);
     }
+    
+    // Сохраняем в localStorage для сохранности
+    localStorage.setItem(`chartData_${selectedNode.id}`, JSON.stringify({
+      data: formattedData,
+      params: sourceInfo
+    }));
     
     setChartParams(prev => ({
       ...prev,
       paramError: '',
       isLoadingParams: false
     }));
+    
+    // Показываем уведомление
+    console.log(`Данные загружены: ${formattedData.length} точек`, sourceInfo);
+    
   }, [selectedNode, chartParams]);
 
   // Функция запуска генерации

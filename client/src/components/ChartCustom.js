@@ -139,13 +139,18 @@ const ChartCustom = ({
     return hours * 3600 + minutes * 60 + seconds + (milliseconds / 1000);
   }, []);
 
-  // Функция для обработки и валидации данных (БЕЗ ОГРАНИЧЕНИЙ)
-  const processChartData = useCallback((rawData, seriesId = 'main') => {
-    if (!rawData || !Array.isArray(rawData)) return [];
+  // Функция для обработки и валидации данных
+const processChartData = useCallback((rawData, seriesId = 'main') => {
+  if (!rawData || !Array.isArray(rawData)) return [];
 
-    const validData = [];
-    const seenTimes = new Set();
-    
+  const validData = [];
+  const seenTimes = new Set();
+  
+  // Проверяем формат данных
+  console.log('Обработка данных:', rawData.length, 'элементов');
+  
+  // Если данные уже в формате {time, value}
+  if (rawData.length > 0 && rawData[0].time != null && rawData[0].value != null) {
     // Сортируем по времени
     const sortedData = [...rawData].sort((a, b) => {
       const timeA = a?.time != null ? timeToSeconds(a.time) : 0;
@@ -156,34 +161,34 @@ const ChartCustom = ({
     for (let i = 0; i < sortedData.length; i++) {
       const item = sortedData[i];
       
-      if (item?.time != null && item?.value != null) {
-        const timeInSeconds = timeToSeconds(item.time);
-        const numericValue = parseFloat(item.value);
+      const timeInSeconds = timeToSeconds(item.time);
+      const numericValue = parseFloat(item.value);
+      
+      if (!isNaN(numericValue) && !isNaN(timeInSeconds)) {
+        const timeKey = `${seriesId}_${timeInSeconds.toFixed(6)}`;
         
-        // Проверяем на валидность
-        if (!isNaN(numericValue) && !isNaN(timeInSeconds)) {
-          const timeKey = `${seriesId}_${timeInSeconds.toFixed(6)}`;
+        if (!seenTimes.has(timeKey)) {
+          seenTimes.add(timeKey);
           
-          if (!seenTimes.has(timeKey)) {
-            seenTimes.add(timeKey);
-            
-            validData.push({
-              key: createDataKey(timeInSeconds, numericValue),
-              time: timeInSeconds,
-              value: numericValue,
-              seriesId: seriesId,
-              originalTime: item.time,
-              overload: item.overload || false,
-              timestamp: Date.now()
-            });
-          }
+          validData.push({
+            key: createDataKey(timeInSeconds, numericValue),
+            time: timeInSeconds,
+            value: numericValue,
+            seriesId: seriesId,
+            originalTime: item.originalTime || item.time,
+            overload: item.overload || false,
+            timestamp: Date.now()
+          });
         }
       }
     }
+  } else {
+    // Если данные в другом формате, пытаемся адаптировать
+    console.warn('Нестандартный формат данных:', rawData[0]);
+  }
 
-    // ВОЗВРАЩАЕМ ВСЕ ДАННЫЕ БЕЗ ОГРАНИЧЕНИЙ
-    return validData;
-  }, [timeToSeconds, createDataKey]);
+  return validData;
+}, [timeToSeconds, createDataKey]);
 
   // Инициализация видимости серий
   useEffect(() => {
