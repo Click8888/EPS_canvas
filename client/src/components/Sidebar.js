@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './Sidebar.css';
 
+const API_BASE_URL = 'http://localhost:8080/api';
+
 const Sidebar = ({ 
   width = 300, 
   minWidth = 20,
@@ -22,18 +24,277 @@ const Sidebar = ({
   const lastUpdateTimeRef = useRef(Date.now());
   const collapseThreshold = 80;
 
+  const [generationState, setGenerationState] = useState({
+    isGenerating: false,
+    isLoading: false,
+    interval: 20,
+    chartId: 'default-chart'
+  });
+
+  // Новое состояние для параметров графика
+  const [chartParams, setChartParams] = useState({
+    tables: [],
+    selectedTable: '',
+    tableData: [],
+    columns: [],
+    xAxisColumn: '',
+    yAxisColumn: '',
+    isLoadingParams: false,
+    paramError: ''
+  });
+
+  // Загрузка таблиц при монтировании компонента
+  useEffect(() => {
+    if (selectedNode && selectedNode.type === 'dataSourceNode') {
+      loadTables();
+    }
+  }, [selectedNode]);
+
+  // Функция загрузки таблиц из БД
+  const loadTables = useCallback(async () => {
+    try {
+      setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
+      
+      const response = await fetch(`${API_BASE_URL}/metadata`);
+      if (!response.ok) throw new Error('Ошибка загрузки метаданных');
+      
+      const data = await response.json();
+      const metadata = data.metadata || data;
+      
+      if (metadata.tables) {
+        const tableNames = metadata.tables.map(table => table.table_name);
+        setChartParams(prev => ({
+          ...prev,
+          tables: tableNames,
+          isLoadingParams: false
+        }));
+      }
+    } catch (err) {
+      setChartParams(prev => ({
+        ...prev,
+        paramError: `Ошибка загрузки таблиц: ${err.message}`,
+        isLoadingParams: false
+      }));
+    }
+  }, []);
+
+  // Функция загрузки данных выбранной таблицы
+  const loadTableData = useCallback(async (tableName) => {
+    if (!tableName) return;
+    
+    try {
+      setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
+      
+      const sql = `SELECT * FROM ${tableName} LIMIT 100`;
+      
+      const response = await fetch(`${API_BASE_URL}/execute-query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+
+      if (!response.ok) throw new Error('Ошибка загрузки данных');
+      
+      const result = await response.json();
+      const data = result.data || result;
+      
+      if (data.length > 0) {
+        const columns = Object.keys(data[0]);
+        setChartParams(prev => ({
+          ...prev,
+          selectedTable: tableName,
+          tableData: data,
+          columns: columns,
+          xAxisColumn: columns[0] || '',
+          yAxisColumn: columns[1] || '',
+          isLoadingParams: false
+        }));
+      } else {
+        // Если данных нет, получаем колонки из метаданных
+        const metaResponse = await fetch(`${API_BASE_URL}/metadata`);
+        const metadata = await metaResponse.json();
+        
+        const table = metadata.metadata?.tables?.find(t => t.table_name === tableName);
+        if (table) {
+          const columns = table.columns.map(col => col.column_name);
+          setChartParams(prev => ({
+            ...prev,
+            selectedTable: tableName,
+            tableData: [],
+            columns: columns,
+            xAxisColumn: columns[0] || '',
+            yAxisColumn: columns[1] || '',
+            isLoadingParams: false
+          }));
+        }
+      }
+      
+    } catch (err) {
+      setChartParams(prev => ({
+        ...prev,
+        paramError: `Ошибка загрузки данных: ${err.message}`,
+        isLoadingParams: false
+      }));
+    }
+  }, []);
+
+  // Функция для применения параметров графика к узлу
+  const applyChartParams = useCallback(() => {
+    if (!selectedNode || !chartParams.selectedTable) return;
+    
+    const { xAxisColumn, yAxisColumn, tableData } = chartParams;
+    
+    if (!xAxisColumn || !yAxisColumn) {
+      setChartParams(prev => ({
+        ...prev,
+        paramError: 'Выберите столбцы для осей X и Y'
+      }));
+      return;
+    }
+    
+    // Форматируем данные для графика
+    const formattedData = tableData
+      .filter(row => row[xAxisColumn] != null && row[yAxisColumn] != null)
+      .map(row => {
+        // Пытаемся преобразовать значения в числа для оси Y
+        const yValue = parseFloat(row[yAxisColumn]);
+        const xValue = row[xAxisColumn];
+        
+        // Для оси X: если это дата/время, преобразуем в секунды
+        let timeValue;
+        if (xValue instanceof Date || (typeof xValue === 'string' && xValue.includes(':'))) {
+          // Преобразование времени в секунды
+          if (xValue instanceof Date) {
+            timeValue = xValue.getTime() / 1000;
+          } else {
+            // Пытаемся разобрать строку времени
+            const timeParts = xValue.split(':').map(Number);
+            if (timeParts.length >= 3) {
+              timeValue = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
+            } else if (timeParts.length === 2) {
+              timeValue = timeParts[0] * 60 + timeParts[1];
+            } else {
+              timeValue = parseFloat(xValue) || 0;
+            }
+          }
+        } else {
+          timeValue = parseFloat(xValue) || 0;
+        }
+        
+        return {
+          time: timeValue,
+          value: isNaN(yValue) ? 0 : yValue,
+          originalTime: xValue,
+          originalValue: row[yAxisColumn]
+        };
+      });
+    
+    // Сортируем по времени
+    formattedData.sort((a, b) => a.time - b.time);
+    
+    // Обновляем данные узла (здесь нужно реализовать логику обновления узла)
+    // Например, можно передать callback через props или использовать контекст
+    
+    console.log('Применены параметры графика:', {
+      table: chartParams.selectedTable,
+      xAxis: xAxisColumn,
+      yAxis: yAxisColumn,
+      dataCount: formattedData.length
+    });
+    
+    // Здесь можно вызвать функцию обновления узла, если она передана через props
+    if (selectedNode.data?.onDataUpdate) {
+      selectedNode.data.onDataUpdate(formattedData);
+    }
+    
+    setChartParams(prev => ({
+      ...prev,
+      paramError: '',
+      isLoadingParams: false
+    }));
+  }, [selectedNode, chartParams]);
+
+  // Функция запуска генерации
+  const startGeneration = async () => {
+    setGenerationState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/generation/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interval: generationState.interval,
+          chartId: generationState.chartId
+        })
+      });
+
+      if (response.ok) {
+        setGenerationState(prev => ({ 
+          ...prev, 
+          isGenerating: true,
+          isLoading: false 
+        }));
+      }
+    } catch (error) {
+      console.error('Ошибка:', error);
+    } finally {
+      setGenerationState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Функция остановки генерации
+  const stopGeneration = async () => {
+    setGenerationState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/generation/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        setGenerationState(prev => ({ 
+          ...prev, 
+          isGenerating: false,
+          isLoading: false 
+        }));
+      }
+    } catch (error) {
+      console.error('Ошибка:', error);
+    } finally {
+      setGenerationState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Проверка статуса при загрузке
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/generation/status`);
+        if (response.ok) {
+          const data = await response.json();
+          setGenerationState(prev => ({ 
+            ...prev, 
+            isGenerating: data.isGenerating 
+          }));
+        }
+      } catch (error) {
+        console.error('Ошибка проверки статуса:', error);
+      }
+    };
+    
+    checkStatus();
+  }, []);
+
   // Функция для безопасного изменения ширины с задержкой
   const safeSetWidth = useCallback((newWidth) => {
-    // Отменяем предыдущие таймауты
     if (resizeTimeoutRef.current) {
       cancelAnimationFrame(resizeTimeoutRef.current);
     }
     
-    // Используем requestAnimationFrame для синхронизации с браузером
     resizeTimeoutRef.current = requestAnimationFrame(() => {
       setSidebarWidth(Math.max(minWidth, Math.min(maxWidth, newWidth)));
       
-      // Добавляем небольшую задержку для стабилизации
       setTimeout(() => {
         if (newWidth <= collapseThreshold && !isCollapsed) {
           setIsCollapsed(true);
@@ -51,7 +312,6 @@ const Sidebar = ({
     setIsAnimating(true);
     
     if (isCollapsed) {
-      // Разворачиваем поэтапно
       const targetWidth = width;
       const steps = [minWidth + 50, minWidth + 150, targetWidth];
       
@@ -65,7 +325,6 @@ const Sidebar = ({
         }, index * 100);
       });
     } else {
-      // Сворачиваем поэтапно
       const steps = [width * 0.7, width * 0.4, minWidth];
       
       steps.forEach((stepWidth, index) => {
@@ -82,7 +341,6 @@ const Sidebar = ({
 
   // Обработчик клика на весь сайдбар в свернутом состоянии
   const handleSidebarClick = useCallback((e) => {
-    // Если сайдбар свернут и клик не на ресайзере - открываем
     if (isCollapsed && !e.target.closest('.sidebar-resizer')) {
       toggleSidebar();
     }
@@ -96,14 +354,11 @@ const Sidebar = ({
     setIsResizing(true);
     lastUpdateTimeRef.current = Date.now();
     
-    
     const startX = e.clientX;
     const startWidth = isCollapsed ? minWidth : sidebarWidth;
     
-    // Для свернутого состояния используем начальную позицию с учетом нового состояния
     const effectiveStartWidth = isCollapsed ? minWidth : sidebarWidth;
     
-    // Добавляем класс для блокировки анимаций  
     if (sidebarRef.current) {
       sidebarRef.current.classList.add('resizing-active');
     }
@@ -112,7 +367,6 @@ const Sidebar = ({
       const currentTime = Date.now();
       const timeDiff = currentTime - lastUpdateTimeRef.current;
       
-      // Ограничиваем частоту обновлений (не чаще чем раз в 16мс ~60fps)
       if (timeDiff < 16) return;
       
       lastUpdateTimeRef.current = currentTime;
@@ -120,49 +374,40 @@ const Sidebar = ({
       const diff = e.clientX - startX;
       let newWidth = Math.max(minWidth, Math.min(maxWidth, effectiveStartWidth + diff));
       
-      // Если сайдбар был свернут, но мы уже начали тянуть,
-      // гарантируем что он остается открытым
       if (newWidth > minWidth + 10 && isCollapsed) {
         setIsCollapsed(false);
       }
       
-      // Используем requestAnimationFrame для синхронизации
       requestAnimationFrame(() => {
         if (sidebarRef.current) {
           sidebarRef.current.style.width = `${newWidth}px`;
           sidebarRef.current.style.setProperty('--sidebar-width', `${newWidth}px`);
-          setSidebarWidth(newWidth); // Обновляем состояние сразу
+          setSidebarWidth(newWidth);
         }
       });
     };
     
     const handleMouseUp = () => {
-      // Фиксируем финальное состояние
       const finalWidth = parseInt(sidebarRef.current?.style.width || sidebarWidth);
       
-      // Если ширина достаточно большая, считаем что сайдбар открыт
       if (finalWidth > collapseThreshold && isCollapsed) {
         setIsCollapsed(false);
       }
       
-      // Восстанавливаем анимации с задержкой
       setTimeout(() => {
         if (sidebarRef.current) {
           sidebarRef.current.classList.remove('resizing-active');
         }
       }, 100);
       
-      // Устанавливаем финальную ширину
       safeSetWidth(finalWidth);
       setIsResizing(false);
       setIsAnimating(false);
       
-      // Удаляем обработчики
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
     
-    // Используем passive: false для предотвращения scroll
     document.addEventListener('mousemove', handleMouseMove, { passive: false });
     document.addEventListener('mouseup', handleMouseUp, { once: true });
     
@@ -179,11 +424,9 @@ const Sidebar = ({
     const sidebar = sidebarRef.current;
     
     if (isResizing || isAnimating) {
-      // Во время ресайза и анимации отключаем transition
       sidebar.style.transition = 'none';
       sidebar.style.willChange = 'width';
     } else {
-      // После ресайза включаем плавную анимацию
       setTimeout(() => {
         if (sidebar) {
           sidebar.style.transition = 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
@@ -192,7 +435,6 @@ const Sidebar = ({
       }, 50);
     }
     
-    // Устанавливаем ширину
     sidebar.style.width = `${sidebarWidth}px`;
   }, [sidebarWidth, isResizing, isAnimating]);
 
@@ -247,36 +489,6 @@ const Sidebar = ({
             </div>
 
             <div className="sidebar-content">
-              {/* Статистика графа */}
-              {/* <div className="sidebar-section">
-                <h6 className="sidebar-section-title">
-                  <i className="bi bi-info-circle"></i>
-                  Статистика графа
-                </h6>
-                <div className="graph-stats">
-                  <div className="stat-row">
-                    <span className="stat-label">Узлы:</span>
-                    <span className="stat-value">{graphInfo?.nodes || 0}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Соединения:</span>
-                    <span className="stat-value">{graphInfo?.edges || 0}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Графики:</span>
-                    <span className="stat-value">{graphInfo?.charts || 0}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Источники:</span>
-                    <span className="stat-value">{graphInfo?.sources || 0}</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Обработчики:</span>
-                    <span className="stat-value">{graphInfo?.processors || 0}</span>
-                  </div>
-                </div>
-              </div> */}
-
               {/* Добавление узлов */}
               <div className="sidebar-section">
                 <h6 className="sidebar-section-title">
@@ -328,6 +540,25 @@ const Sidebar = ({
                       <i className="bi bi-arrow-clockwise"></i> Сброс
                     </button>
                   </div>
+                  <div className="btn-group w-100 mt-2" role="group">
+                    <button 
+                      className={`btn btn-sm mb-2 ${generationState.isGenerating ? 'btn-danger' : 'btn-primary'}`}
+                      onClick={generationState.isGenerating ? stopGeneration : startGeneration}
+                      disabled={generationState.isLoading}
+                    >
+                      {generationState.isLoading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                          {generationState.isGenerating ? 'Остановка...' : 'Запуск...'}
+                        </>
+                      ) : (
+                        <>
+                          <i className={`bi ${generationState.isGenerating ? 'bi-stop-circle' : 'bi-play-circle'} me-1`}></i>
+                          {generationState.isGenerating ? 'Остановить генерацию' : 'Начать генерацию данных'}
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -336,59 +567,159 @@ const Sidebar = ({
                 <div className="sidebar-section">
                   <h6 className="sidebar-section-title">
                     <i className="bi bi-node-plus"></i>
-                    Выбранный узел
+                    Параметры графика
                   </h6>
                   <div className="selected-node-info">
                     <div className="selected-node-header">
                       <span className="badge bg-primary">
-                        {selectedNode.type === 'chartNode' && 'График'}
                         {selectedNode.type === 'dataSourceNode' && 'Источник'}
                         {selectedNode.type === 'processorNode' && 'Обработчик'}
                       </span>
                       <span className="ms-2">{selectedNode.data.label}</span>
                     </div>
                     <div className="selected-node-details">
-                      <div className="detail-item">
-                        <span className="detail-label">ID:</span>
-                        <span className="detail-value">{selectedNode.id}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="detail-label">X:</span>
-                        <span className="detail-value">{Math.round(selectedNode.position.x)}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="detail-label">Y:</span>
-                        <span className="detail-value">{Math.round(selectedNode.position.y)}</span>
-                      </div>
-                      {selectedNode.data.description && (
-                        <div className="detail-item">
-                          <span className="detail-label">Описание:</span>
-                          <span className="detail-value">{selectedNode.data.description}</span>
+                      {/* Блок выбора параметров графика из БД */}
+                      <div className="chart-params-selector mt-3">
+                        <h6 className="mb-2" style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                          <i className="bi bi-database me-1"></i> Выбор данных из БД
+                        </h6>
+                        
+                        {chartParams.paramError && (
+                          <div className="alert alert-danger alert-dismissible fade show py-1 px-2 mb-2" style={{ fontSize: '12px' }}>
+                            <i className="bi bi-exclamation-triangle me-1"></i>
+                            {chartParams.paramError}
+                            <button 
+                              type="button" 
+                              className="btn-close btn-close-sm" 
+                              onClick={() => setChartParams(prev => ({ ...prev, paramError: '' }))}
+                            ></button>
+                          </div>
+                        )}
+                        
+                        {/* Выбор таблицы */}
+                        <div className="mb-2">
+                          <label className="form-label" style={{ fontSize: '12px' }}>Таблица:</label>
+                          <div className="input-group input-group-sm">
+                            <select 
+                              className="form-select form-select-sm"
+                              value={chartParams.selectedTable}
+                              onChange={(e) => loadTableData(e.target.value)}
+                              disabled={chartParams.isLoadingParams}
+                            >
+                              <option value="">Выберите таблицу...</option>
+                              {chartParams.tables.map(table => (
+                                <option key={table} value={table}>{table}</option>
+                              ))}
+                            </select>
+                            <button 
+                              className="btn btn-outline-secondary btn-sm"
+                              onClick={loadTables}
+                              disabled={chartParams.isLoadingParams}
+                              title="Обновить список таблиц"
+                            >
+                              <i className="bi bi-arrow-clockwise"></i>
+                            </button>
+                          </div>
                         </div>
-                      )}
+                        
+                        {/* Выбор столбцов для осей */}
+                        {chartParams.columns.length > 0 && (
+                          <>
+                            <div className="mb-2">
+                              <label className="form-label" style={{ fontSize: '12px' }}>Ось X (Время):</label>
+                              <select 
+                                className="form-select form-select-sm"
+                                value={chartParams.xAxisColumn}
+                                onChange={(e) => setChartParams(prev => ({ ...prev, xAxisColumn: e.target.value }))}
+                                disabled={chartParams.isLoadingParams}
+                              >
+                                <option value="">Выберите столбец...</option>
+                                {chartParams.columns.map(column => (
+                                  <option key={`x-${column}`} value={column}>{column}</option>
+                                ))}
+                              </select>
+                            </div>
+                            
+                            <div className="mb-3">
+                              <label className="form-label" style={{ fontSize: '12px' }}>Ось Y (Значение):</label>
+                              <select 
+                                className="form-select form-select-sm"
+                                value={chartParams.yAxisColumn}
+                                onChange={(e) => setChartParams(prev => ({ ...prev, yAxisColumn: e.target.value }))}
+                                disabled={chartParams.isLoadingParams}
+                              >
+                                <option value="">Выберите столбец...</option>
+                                {chartParams.columns.map(column => (
+                                  <option key={`y-${column}`} value={column}>{column}</option>
+                                ))}
+                              </select>
+                            </div>
+                            
+                            {/* Статистика данных */}
+                            {chartParams.tableData.length > 0 && (
+                              <div className="data-stats mb-3 p-2 bg-dark rounded" style={{ fontSize: '11px' }}>
+                                <div className="d-flex justify-content-between">
+                                  <span>Записей:</span>
+                                  <span className="badge bg-info">{chartParams.tableData.length}</span>
+                                </div>
+                                <div className="d-flex justify-content-between">
+                                  <span>Столбцов:</span>
+                                  <span className="badge bg-info">{chartParams.columns.length}</span>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Кнопки действий */}
+                            <div className="d-grid gap-2">
+                              <button
+                                className="btn btn-primary btn-sm"
+                                onClick={applyChartParams}
+                                disabled={chartParams.isLoadingParams || !chartParams.xAxisColumn || !chartParams.yAxisColumn}
+                              >
+                                {chartParams.isLoadingParams ? (
+                                  <>
+                                    <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    Загрузка...
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className="bi bi-check-circle me-1"></i>
+                                    Применить параметры
+                                  </>
+                                )}
+                              </button>
+                              
+                              {chartParams.selectedTable && (
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  onClick={() => loadTableData(chartParams.selectedTable)}
+                                  disabled={chartParams.isLoadingParams}
+                                >
+                                  <i className="bi bi-arrow-clockwise me-1"></i>
+                                  Обновить данные
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                        
+                        {/* Индикатор загрузки */}
+                        {chartParams.isLoadingParams && (
+                          <div className="text-center py-2">
+                            <div className="spinner-border spinner-border-sm text-primary" role="status">
+                              <span className="visually-hidden">Загрузка...</span>
+                            </div>
+                            <small className="text-muted d-block mt-1">Загрузка данных...</small>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Быстрые действия */}
-              {/* <div className="sidebar-section">
-                <h6 className="sidebar-section-title">
-                  <i className="bi bi-lightning"></i>
-                  Быстрые действия
-                </h6>
-                <div className="quick-actions">
-                  <button className="btn btn-sm btn-outline-secondary w-100 mb-1">
-                    <i className="bi bi-arrows-angle-expand"></i> Подогнать все узлы
-                  </button>
-                  <button className="btn btn-sm btn-outline-secondary w-100 mb-1">
-                    <i className="bi bi-grid"></i> Выровнять сетку
-                  </button>
-                  <button className="btn btn-sm btn-outline-secondary w-100">
-                    <i className="bi bi-eye"></i> Показать все соединения
-                  </button>
-                </div>
-              </div> */}
+              {/* ... существующий код ... */}
             </div>
           </>
         )}

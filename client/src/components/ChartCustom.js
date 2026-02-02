@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
+
 const ChartCustom = ({ 
   data = [], 
   series = [],
@@ -10,18 +11,19 @@ const ChartCustom = ({
   chartId,
   realTime = false,
   dataType = 'current',
-  // ДОБАВЬТЕ ЭТИ ПРОПСЫ:
   containerWidth,
-  containerHeight
+  containerHeight,
 }) => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const animationRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const wsRef = useRef(null);
   
   // Локальное состояние данных с уникальными ключами
   const [chartData, setChartData] = useState([]);
   const [dataMap, setDataMap] = useState(new Map());
+  const [isConnected, setIsConnected] = useState(false);
   const lastProcessedTimeRef = useRef(0);
   const dataKeyCounterRef = useRef(0);
   const isFollowingRef = useRef(true); // Флаг следования за новыми данными
@@ -50,6 +52,7 @@ const ChartCustom = ({
     lineColor = '#133592',
     gridColor = '#444'
   } = colors;
+
 
   // Вспомогательная функция для красивого шага сетки
   const getNiceStep = useCallback((value) => {
@@ -572,45 +575,6 @@ const ChartCustom = ({
     ctx.setLineDash([]);
   }, [chartState.hoverInfo, worldToScreen]);
 
-  // Информация о данных
-  const drawInfo = useCallback((ctx, canvas) => {
-    ctx.fillStyle = textColor;
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'left';
-
-    const totalPoints = sortedChartData.length;
-    const visiblePoints = sortedChartData.filter(p => 
-      p.time >= chartState.viewport.minX && 
-      p.time <= chartState.viewport.maxX
-    ).length;
-    
-    const earliestTime = sortedChartData.length > 0 ? 
-      sortedChartData[0].time : 0;
-    const latestTime = sortedChartData.length > 0 ? 
-      sortedChartData[sortedChartData.length - 1].time : 0;
-    const totalDuration = latestTime - earliestTime;
-
-
-    // Статус обновления
-    if (isUpdating) {
-      ctx.fillStyle = '#ff9900';
-      ctx.fillText('🔄 Обновление...', canvas.width - 100, 20);
-    }
-
-    // Hover информация
-    if (chartState.hoverInfo) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(canvas.width - 200, 30, 190, 50);
-      
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '11px monospace';
-      ctx.textAlign = 'right';
-      
-      ctx.fillText(`Время: ${formatTime(chartState.hoverInfo.time)}`, canvas.width - 10, 50);
-      ctx.fillText(`Знач: ${chartState.hoverInfo.value.toFixed(3)}`, canvas.width - 10, 65);
-    }
-  }, [textColor, sortedChartData, chartState, isUpdating, formatTime]);
-
   // Отрисовка графика
   const drawChart = useCallback(() => {
     const canvas = canvasRef.current;
@@ -659,9 +623,6 @@ const ChartCustom = ({
       drawAllPoints(ctx, sortedChartData, lineColor, 2);
     }
 
-    // Обновляем информацию о данных
-    drawInfo(ctx, canvas);
-
     // Рисуем hover линию если есть
     if (chartState.hoverInfo) {
       drawHoverLine(ctx, canvas);
@@ -670,7 +631,7 @@ const ChartCustom = ({
     backgroundColor, gridColor, textColor, lineColor, 
     sortedChartData, processedSeries, chartState.viewport, chartState.hoverInfo, 
     worldToScreen, drawGrid, drawAxes, drawLine, drawOverloadPoints, 
-    drawAllPoints, drawInfo, drawHoverLine
+    drawAllPoints, drawHoverLine, isConnected
   ]);
 
   // Обработчики взаимодействия
@@ -947,6 +908,45 @@ const ChartCustom = ({
     }
   }, [timeToSeconds, createDataKey, dataMap]);
 
+  // Запуск/остановка генерации через API
+  const handleStartGeneration = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/generation/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          interval: 50,
+          chartId: chartId
+        })
+      });
+      
+      if (response.ok) {
+        console.log('Генерация запущена');
+      }
+    } catch (error) {
+      console.error('Ошибка запуска генерации:', error);
+    }
+  }, [chartId]);
+
+  const handleStopGeneration = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/generation/stop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        console.log('Генерация остановлена');
+      }
+    } catch (error) {
+      console.error('Ошибка остановки генерации:', error);
+    }
+  }, []);
+
   // Обновите функцию updateCanvasSize:
   const updateCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
@@ -1208,6 +1208,7 @@ const ChartCustom = ({
         gap: '5px',
         zIndex: 10
       }}>
+        
         <button
           className="btn btn-sm btn-outline-secondary"
           onClick={handleDoubleClick}

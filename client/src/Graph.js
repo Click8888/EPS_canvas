@@ -18,7 +18,6 @@ import Sidebar from './components/Sidebar';
 // Импортируем ChartCustom компонент
 const ChartCustom = React.lazy(() => import('./components/ChartCustom'));
 
-
 // Кастомный узел для графика
 const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [chartData, setChartData] = useState([]);
@@ -26,8 +25,41 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [chartSeries, setChartSeries] = useState([]);
   const [nodeSize, setNodeSize] = useState({ width: 400, height: 300 });
   const [isResizing, setIsResizing] = useState(false);
-  const nodeRef = useRef(null);
+  const [updateConfig, setUpdateConfig] = useState({
+    interval: 100, // Интервал обновления в мс (от 10 до 1000)
+    isAutoUpdate: false, // Автоматическое обновление
+    isSettingsOpen: false, // Открыты ли настройки
+  });
+  const [intervalInput, setIntervalInput] = useState("100"); // Для текстового ввода
   
+  const nodeRef = useRef(null);
+  const updateIntervalRef = useRef(null);
+  const settingsPanelRef = useRef(null);
+  
+  // Закрытие панели настроек при клике вне её
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        settingsPanelRef.current && 
+        !settingsPanelRef.current.contains(event.target) &&
+        !event.target.closest('.settings-toggle-btn') &&
+        !event.target.closest('.update-toggle-btn')
+      ) {
+        setUpdateConfig(prev => ({
+          ...prev,
+          isSettingsOpen: false
+        }));
+      }
+    };
+    
+    if (updateConfig.isSettingsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [updateConfig.isSettingsOpen]);
 
   // Инициализация данных графика
   useEffect(() => {
@@ -36,7 +68,91 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     if (data.width && data.height) {
       setNodeSize({ width: data.width, height: data.height });
     }
+    // Инициализируем текстовое поле
+    setIntervalInput(updateConfig.interval.toString());
   }, [data.initialData, data.series, data.width, data.height]);
+
+
+  // Функция для загрузки данных графика
+  const fetchChartData = useCallback(async () => {
+    try {
+      // Можно заменить на реальный API запрос
+      const newDataPoint = {
+        time: Date.now() / 1000,
+        value: Math.random() * 100 + 50,
+        overload: Math.random() > 0.9
+      };
+      
+      setChartData(prev => {
+        const newData = [...prev, newDataPoint];
+        return newData.slice(-1000);
+      });
+      
+      setIsUpdating(true);
+      setTimeout(() => setIsUpdating(false), 50);
+      
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error);
+      setIsUpdating(false);
+    }
+  }, []);
+
+  // Тоггл автоматического обновления
+  const toggleAutoUpdate = useCallback(() => {
+    setUpdateConfig(prev => ({
+      ...prev,
+      isAutoUpdate: !prev.isAutoUpdate,
+      isSettingsOpen: prev.isAutoUpdate ? false : prev.isSettingsOpen
+    }));
+  }, []);
+
+  // Открыть/закрыть настройки обновления
+  const toggleSettings = useCallback(() => {
+    setUpdateConfig(prev => ({
+      ...prev,
+      isSettingsOpen: !prev.isSettingsOpen
+    }));
+  }, []);
+
+  // Изменить интервал обновления через текстовое поле
+  const handleIntervalInputChange = useCallback((e) => {
+    const value = e.target.value;
+    setIntervalInput(value);
+    
+    // Валидация и установка интервала
+    const numValue = parseInt(value);
+    if (!isNaN(numValue)) {
+      const validatedValue = Math.max(10, Math.min(1000, numValue));
+      setUpdateConfig(prev => ({
+        ...prev,
+        interval: validatedValue
+      }));
+    }
+  }, []);
+
+  // Применить интервал при потере фокуса
+  const handleIntervalInputBlur = useCallback(() => {
+    const numValue = parseInt(intervalInput);
+    
+    if (isNaN(numValue) || numValue < 10 || numValue > 1000) {
+      // Возвращаем к предыдущему значению
+      setIntervalInput(updateConfig.interval.toString());
+    } else {
+      setUpdateConfig(prev => ({
+        ...prev,
+        interval: numValue
+      }));
+    }
+  }, [intervalInput, updateConfig.interval]);
+
+  // Быстрые кнопки интервалов
+  const handleQuickInterval = useCallback((ms) => {
+    setUpdateConfig(prev => ({
+      ...prev,
+      interval: ms
+    }));
+    setIntervalInput(ms.toString());
+  }, []);
 
   // Кастомный ресайзер с квадратными ручками
   const CustomResizer = () => {
@@ -111,8 +227,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     const startY = e.clientY;
     const startWidth = nodeSize.width;
     const startHeight = nodeSize.height;
-    console.log(startX);
-    console.log(startY);
+    
     setIsResizing(true);
     document.body.style.cursor = getCursor(direction);
     
@@ -223,7 +338,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
         position: 'relative',
         cursor: isResizing ? getCursor('bottom-right') : 'default'
       }}
-      onContextMenu={handleContextMenu} // ДОБАВИТЬ ЭТО
+      onContextMenu={handleContextMenu}
     >
       {/* Квадратные ручки для ресайза */}
       <CustomResizer />
@@ -236,40 +351,93 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
             Размер: {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
           </span>
         </div>
-        <div className="chart-node-actions">
-          <button 
-            className="btn btn-sm btn-outline-secondary"
-            onClick={() => setChartData([])}
-            title="Очистить данные"
+        
+        {/* Кнопки управления обновлением данных */}
+        <div className="chart-update-controls">
+          {/* Основная кнопка обновления */}
+          <button
+            className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
+            onClick={toggleAutoUpdate}
+            title={updateConfig.isAutoUpdate ? "Остановить обновление" : "Запустить обновление"}
           >
-            <i className="bi bi-trash"></i>
+            <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
+          </button>
+          
+          {/* Кнопка настройки */}
+          <button
+            className={`btn btn-sm settings-toggle-btn ${updateConfig.isSettingsOpen ? 'btn-primary' : 'btn-outline-secondary'}`}
+            onClick={toggleSettings}
+            title="Настройки обновления"
+          >
+            <i className={`bi ${updateConfig.isSettingsOpen ? 'bi-chevron-up' : 'bi-gear'}`}></i>
           </button>
         </div>
       </div>
       
+      {/* Выдвижная панель настроек обновления */}
+      {updateConfig.isSettingsOpen && (
+        <div ref={settingsPanelRef} className="update-settings-panel">
+          <div className="settings-header">
+            <small>Настройки обновления данных</small>
+            <button 
+              className="btn-close btn-close-white btn-sm"
+              onClick={toggleSettings}
+              style={{ fontSize: '10px' }}
+            />
+          </div>
+          
+          <div className="settings-body">
+            <div className="mb-3">
+              <label className="form-label" style={{ fontSize: '12px', marginBottom: '8px' }}>
+                Интервал обновления (10-1000 мс)
+              </label>
+              <div className="input-group input-group-sm">
+                <input
+                  type="number"
+                  className="form-control form-control-sm"
+                  value={intervalInput}
+                  onChange={handleIntervalInputChange}
+                  onBlur={handleIntervalInputBlur}
+                  min="10"
+                  max="1000"
+                  step="10"
+                  style={{
+                    textAlign: 'center',
+                    backgroundColor: '#333',
+                    borderColor: '#555',
+                    color: '#fff',
+                    fontSize: '13px'
+                  }}
+                />
+                <span className="input-group-text" style={{ backgroundColor: '#333', borderColor: '#555', color: '#ccc' }}>
+                  мс
+                </span>
+              </div>
+              <div className="form-text text-muted mt-1" style={{ fontSize: '10px' }}>
+                Введите значение от 10 до 1000 миллисекунд
+              </div>
+            </div>
+              
+          </div>
+        </div>
+      )}
+      
       <div className="chart-node-content">
         <React.Suspense fallback={<div style={{ color: '#fff', padding: '20px' }}>Загрузка графика...</div>}>
           <ChartCustom
-  data={chartData}
-  series={chartSeries}
-  colors={chartColors}
-  type={data.chartType || 'linear'}
-  isUpdating={isUpdating}
-  onSeriesToggle={() => {}}
-  chartId={data.id || 'chart-1'}
-  realTime={data.realTime || false}
-  dataType="current"
-  // ДОБАВЬТЕ ЭТИ ПРОПСЫ:
-  containerWidth={nodeSize.width}
-  containerHeight={nodeSize.height}
-/>
+            data={chartData}
+            series={chartSeries}
+            colors={chartColors}
+            type={data.chartType || 'linear'}
+            isUpdating={isUpdating}
+            onSeriesToggle={() => {}}
+            chartId={data.id || 'chart-1'}
+            realTime={data.realTime || false}
+            dataType={data.dataType || 'current'}
+            containerWidth={nodeSize.width}
+            containerHeight={nodeSize.height}
+          />
         </React.Suspense>
-      </div>
-      
-      <div className="chart-node-footer">
-        <small className="text-muted">
-          Точки: {chartData.length} | Серии: {chartSeries.length}
-        </small>
       </div>
     </div>
   );

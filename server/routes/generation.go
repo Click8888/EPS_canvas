@@ -278,7 +278,7 @@ func generateCurrentMeasurements(db *gorm.DB, stopChan chan bool, interval int, 
 
 	// Счетчик для уникальных временных меток
 	timeCounter := 0.0
-	lastSendTime := time.Now()
+
 
 	for {
 		select {
@@ -323,12 +323,6 @@ func generateCurrentMeasurements(db *gorm.DB, stopChan chan bool, interval int, 
 				log.Printf("Ошибка вставки данных: %v", err)
 			}
 
-			// Логирование
-			if time.Since(lastSendTime) > time.Second {
-				log.Printf("Генерация: время=%.3fс, ток=%.3fA, напряжение=%.3fV, перегрузка=%v",
-					timeInSeconds, data.CurrentValue, data.VoltageValue, data.IsOverload)
-				lastSendTime = time.Now()
-			}
 		}
 	}
 }
@@ -438,43 +432,31 @@ func generateDataPoint(counter float64, timeInSeconds float64) CurrentMeasuremen
 
 // Вставка данных в БД - ИСПРАВЛЕННАЯ ВЕРСИЯ
 func insertData(db *gorm.DB, data CurrentMeasurement) error {
-	// Преобразуем время в строку в формате, понятном для PostgreSQL
-	// Используем формат ISO 8601 для надежности
-	timeStr := data.MeasurementTime.Format("2006-01-02 15:04:05.999999")
+    // Форматируем время в строку, которая точно поместится в 30 символов
+    timeStr := data.MeasurementTime.Format("2006-01-02 15:04:05.999")
+    
+    measurement := map[string]interface{}{
+        "measurement_time": timeStr, // Только как строка
+        "current_value":    data.CurrentValue,
+        "voltage_value":    data.VoltageValue,
+        "circuit_id":       data.CircuitID,
+        "sensor_model":     data.SensorModel,
+        "is_overload":      data.IsOverload,
+    }
 
-	// В зависимости от типа поля в БД, можно использовать один из форматов:
-	// 1. Для timestamp: оставляем как есть или преобразуем в нужный формат
-	// 2. Для varchar: преобразуем в строку
+    result := db.Table("current_measurements").Create(measurement)
+    
+    if result.Error != nil {
+        // Альтернативный подход с более простым SQL
+        sql := `INSERT INTO current_measurements 
+                (measurement_time, current_value, voltage_value, circuit_id, sensor_model, is_overload) 
+                VALUES (?, ?, ?, ?, ?, ?)`
+        
+        result = db.Exec(sql, timeStr, data.CurrentValue, data.VoltageValue,
+            data.CircuitID, data.SensorModel, data.IsOverload)
+    }
 
-	measurement := map[string]interface{}{
-		"measurement_time": timeStr, // Преобразуем время в строку
-		"current_value":    data.CurrentValue,
-		"voltage_value":    data.VoltageValue,
-		"circuit_id":       data.CircuitID,
-		"sensor_model":     data.SensorModel,
-		"is_overload":      data.IsOverload,
-	}
-
-	result := db.Table("current_measurements").Create(measurement)
-
-	// Если все еще возникает ошибка, попробуем альтернативный подход с raw SQL
-	if result.Error != nil {
-		// Альтернативный подход: используем raw SQL
-		sql := `INSERT INTO current_measurements (measurement_time, current_value, voltage_value, circuit_id, sensor_model, is_overload) 
-				VALUES (?, ?, ?, ?, ?, ?)`
-
-		// Если поле measurement_time в БД имеет тип timestamp, попробуем так:
-		result = db.Exec(sql, data.MeasurementTime, data.CurrentValue, data.VoltageValue,
-			data.CircuitID, data.SensorModel, data.IsOverload)
-
-		if result.Error != nil {
-			// Если и это не работает, пробуем как строку
-			result = db.Exec(sql, timeStr, data.CurrentValue, data.VoltageValue,
-				data.CircuitID, data.SensorModel, data.IsOverload)
-		}
-	}
-
-	return result.Error
+    return result.Error
 }
 
 // API для получения истории данных
