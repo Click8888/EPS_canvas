@@ -348,7 +348,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     // Валидация и установка интервала
     const numValue = parseInt(value);
     if (!isNaN(numValue)) {
-      const validatedValue = Math.max(100, Math.min(10000, numValue));
+      const validatedValue = Math.max(20, Math.min(1000, numValue));
       setUpdateConfig(prev => ({
         ...prev,
         interval: validatedValue
