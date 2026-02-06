@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
+import Chart from './Chart.js'
 
 const ChartCustom = ({ 
   data = [], 
@@ -1168,7 +1169,11 @@ const processChartData = useCallback((rawData, seriesId = 'main') => {
       }}
       onContextMenu={handleContextMenu} // ДОБАВИТЬ ЭТО
     >
-      <canvas
+    <Chart 
+      data={data}
+
+    />
+      {/* <canvas
         ref={canvasRef}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -1183,7 +1188,7 @@ const processChartData = useCallback((rawData, seriesId = 'main') => {
           display: 'block',
           userSelect: 'none'
         }}
-      />
+      /> */}
       
       {!hasData && (
         <div style={{
@@ -1201,9 +1206,6 @@ const processChartData = useCallback((rawData, seriesId = 'main') => {
         </div>
       )}
 
-      {/* Легенда */}
-      <Legend />
-
       {/* Элементы управления */}
       <div style={{
         position: 'absolute',
@@ -1213,78 +1215,6 @@ const processChartData = useCallback((rawData, seriesId = 'main') => {
         gap: '5px',
         zIndex: 10
       }}>
-        
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={handleDoubleClick}
-          title="Автомасштабирование"
-          style={{ 
-            padding: '2px 8px',
-            backgroundColor: 'rgba(42, 42, 42, 0.8)',
-            borderColor: '#555',
-            color: '#fff'
-          }}
-        >
-          <i className="bi bi-arrows-fullscreen"></i>
-        </button>
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={handleZoomIn}
-          title="Приблизить"
-          style={{ 
-            padding: '2px 8px',
-            backgroundColor: 'rgba(42, 42, 42, 0.8)',
-            borderColor: '#555',
-            color: '#fff'
-          }}
-        >
-          <i className="bi bi-zoom-in"></i>
-        </button>
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={handleZoomOut}
-          title="Отдалить"
-          style={{ 
-            padding: '2px 8px',
-            backgroundColor: 'rgba(42, 42, 42, 0.8)',
-            borderColor: '#555',
-            color: '#fff'
-          }}
-        >
-          <i className="bi bi-zoom-out"></i>
-        </button>
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={handleFollowToggle}
-          title={isFollowingRef.current ? "Выключить слежение" : "Включить слежение"}
-          style={{ 
-            padding: '2px 8px',
-            backgroundColor: isFollowingRef.current ? 'rgba(0, 123, 255, 0.8)' : 'rgba(42, 42, 42, 0.8)',
-            borderColor: '#555',
-            color: '#fff'
-          }}
-        >
-          <i className={isFollowingRef.current ? "bi bi-play-circle" : "bi bi-pause-circle"}></i>
-        </button>
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={() => {
-            setChartData([]);
-            setDataMap(new Map());
-            lastProcessedTimeRef.current = 0;
-            isFollowingRef.current = true;
-            viewportLockRef.current = false;
-          }}
-          title="Очистить данные"
-          style={{ 
-            padding: '2px 8px',
-            backgroundColor: 'rgba(42, 42, 42, 0.8)',
-            borderColor: '#555',
-            color: '#fff'
-          }}
-        >
-          <i className="bi bi-trash"></i>
-        </button>
       </div>
 
       {/* Индикатор перетаскивания */}

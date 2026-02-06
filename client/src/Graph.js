@@ -14,24 +14,23 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import './Graph.css';
 import Sidebar from './components/Sidebar';
-
-// Импортируем ChartCustom компонент
-const ChartCustom = React.lazy(() => import('./components/ChartCustom'));
+import Chart from './components/Chart';
 
 // Кастомный узел для графика
 const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [chartData, setChartData] = useState([]);
+  const [activeGraphUpdate, setActiveGraphUpdate] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [chartSeries, setChartSeries] = useState([]);
   const [nodeSize, setNodeSize] = useState({ width: 400, height: 300 });
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
-    interval: 1000, // Интервал обновления из БД в мс
+    interval: 20, // Интервал обновления из БД в мс
     isAutoUpdate: false, // Автоматическое обновление
     isSettingsOpen: false,
     lastUpdateTime: null // Время последнего обновления
   });
-  const [intervalInput, setIntervalInput] = useState("1000");
+  const [intervalInput, setIntervalInput] = useState("20");
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [pollingIntervalId, setPollingIntervalId] = useState(null);
   const [wsConnection, setWsConnection] = useState(null);
@@ -60,7 +59,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       }
       
       sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
-      
+
       console.log('Выполняем SQL:', sql);
       
       const response = await fetch('http://localhost:8080/api/execute-query', {
@@ -126,26 +125,30 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
         // Сортируем по времени
         formattedData.sort((a, b) => a.time - b.time);
         
-        // Обновляем данные графика
+        // Обновляем данные графика - добавляем новые точки к существующим
         setChartData(prev => {
-          const combined = [...prev];
+          // Проверяем только самые новые точки на дубликаты
+          const existingTimes = new Set();
+          const lastExistingPoints = prev.slice(-formattedData.length);
+          lastExistingPoints.forEach(p => existingTimes.add(p.time));
           
-          formattedData.forEach(newPoint => {
-            // Проверяем, нет ли уже такой точки
-            const existingIndex = combined.findIndex(p => 
-              Math.abs(p.time - newPoint.time) < 0.001
+          // Фильтруем новые данные, оставляем только те, которых еще нет
+          const uniqueNewData = formattedData.filter(newPoint => {
+            const hasDuplicate = Array.from(existingTimes).some(existingTime => 
+              Math.abs(existingTime - newPoint.time) < 0.001
             );
-            
-            if (existingIndex === -1) {
-              combined.push(newPoint);
-            } else {
-              combined[existingIndex] = newPoint;
-            }
+            return !hasDuplicate;
           });
           
-          // Сортируем
-          combined.sort((a, b) => a.time - b.time);
-          return combined;
+          // Если есть уникальные новые данные, добавляем их
+          if (uniqueNewData.length > 0) {
+            const updatedData = [...prev, ...uniqueNewData];
+            // Сортируем по времени
+            updatedData.sort((a, b) => a.time - b.time);
+            return updatedData;
+          }
+          
+          return prev;
         });
         
         // Обновляем время последнего обновления
@@ -173,6 +176,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       setIsUpdating(false);
     }
   }, [dataSourceInfo, updateConfig.lastUpdateTime]);
+
 
   // Инициализация данных графика
   useEffect(() => {
@@ -251,46 +255,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       clearInterval(pollingIntervalId);
       setPollingIntervalId(null);
     }
-  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, fetchDataFromDB]);
 
-  // WebSocket для получения уведомлений о новых данных
-  useEffect(() => {
-    if (updateConfig.isAutoUpdate) {
-      const ws = new WebSocket('ws://localhost:8080/api/ws');
-      
-      ws.onopen = () => {
-        console.log('WebSocket подключен для автообновления');
-        setWsConnection(ws);
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'new_data') {
-            // Если пришло уведомление о новых данных, сразу загружаем их
-            fetchDataFromDB();
-          }
-        } catch (error) {
-          console.error('Ошибка обработки WebSocket сообщения:', error);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-      
-      ws.onclose = () => {
-        console.log('WebSocket соединение закрыто');
-        setWsConnection(null);
-      };
-      
-      return () => {
-        if (ws) {
-          ws.close();
-        }
-      };
-    }
-  }, [updateConfig.isAutoUpdate, fetchDataFromDB]);
+  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, fetchDataFromDB]);
 
   // Закрытие панели настроек при клике вне её
   useEffect(() => {
@@ -317,8 +283,10 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     };
   }, [updateConfig.isSettingsOpen]);
 
+
   // Тоггл автоматического обновления
   const toggleAutoUpdate = useCallback(() => {
+    setActiveGraphUpdate(true)
     const newState = !updateConfig.isAutoUpdate;
     setUpdateConfig(prev => ({
       ...prev,
@@ -340,60 +308,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     }));
   }, []);
 
-  // Изменить интервал обновления через текстовое поле
-  const handleIntervalInputChange = useCallback((e) => {
-    const value = e.target.value;
-    setIntervalInput(value);
-    
-    // Валидация и установка интервала
-    const numValue = parseInt(value);
-    if (!isNaN(numValue)) {
-      const validatedValue = Math.max(20, Math.min(1000, numValue));
-      setUpdateConfig(prev => ({
-        ...prev,
-        interval: validatedValue
-      }));
-      
-      // Если автообновление активно, перезапускаем интервал
-      if (pollingIntervalId && updateConfig.isAutoUpdate) {
-        clearInterval(pollingIntervalId);
-        setPollingIntervalId(null);
-        
-        setTimeout(() => {
-          if (updateConfig.isAutoUpdate) {
-            const newInterval = setInterval(() => {
-              fetchDataFromDB();
-            }, validatedValue);
-            setPollingIntervalId(newInterval);
-          }
-        }, 100);
-      }
-    }
-  }, [intervalInput, updateConfig.interval, pollingIntervalId, updateConfig.isAutoUpdate, fetchDataFromDB]);
-
-  // Применить интервал при потере фокуса
-  const handleIntervalInputBlur = useCallback(() => {
-    const numValue = parseInt(intervalInput);
-    
-    if (isNaN(numValue) || numValue < 100 || numValue > 10000) {
-      // Возвращаем к предыдущему значению
-      setIntervalInput(updateConfig.interval.toString());
-    } else {
-      setUpdateConfig(prev => ({
-        ...prev,
-        interval: numValue
-      }));
-    }
-  }, [intervalInput, updateConfig.interval]);
-
-  // Быстрые кнопки интервалов
-  const handleQuickInterval = useCallback((ms) => {
-    setUpdateConfig(prev => ({
-      ...prev,
-      interval: ms
-    }));
-    setIntervalInput(ms.toString());
-  }, []);
 
   // Кастомный ресайзер с квадратными ручками
   const CustomResizer = () => {
@@ -512,8 +426,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       }
       
       // Ограничиваем максимальные размеры
-      newWidth = Math.min(1200, newWidth);
-      newHeight = Math.min(600, newHeight);
+      newWidth = Math.min(999999, newWidth);
+      newHeight = Math.min(99999, newHeight);
       
       setNodeSize({ width: newWidth, height: newHeight });
     };
@@ -655,8 +569,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
                   type="number"
                   className="form-control form-control-sm"
                   value={intervalInput}
-                  onChange={handleIntervalInputChange}
-                  onBlur={handleIntervalInputBlur}
+                  // onChange={handleIntervalInputChange}
+                  // onBlur={handleIntervalInputBlur}
                   min="100"
                   max="10000"
                   step="100"
@@ -680,11 +594,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
             {dataSourceInfo && (
               <div className="mb-3">
                 <div className="alert alert-info py-1 px-2" style={{ fontSize: '11px' }}>
-                  <i className="bi bi-info-circle me-1"></i>
-                  Источник: {dataSourceInfo.table}<br/>
-                  Ось X: {dataSourceInfo.xAxis}<br/>
-                  Ось Y: {dataSourceInfo.yAxis}<br/>
-                  Всего точек: {chartData.length}
+                  
                 </div>
               </div>
             )}
@@ -710,22 +620,16 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
         </div>
       )}
       
+
       <div className="chart-node-content">
-        <React.Suspense fallback={<div style={{ color: '#fff', padding: '20px' }}>Загрузка графика...</div>}>
-          <ChartCustom
-            data={chartData}
-            series={chartSeries}
-            colors={chartColors}
-            type={data.chartType || 'linear'}
-            isUpdating={isUpdating}
-            onSeriesToggle={() => {}}
-            chartId={id}
-            realTime={updateConfig.isAutoUpdate}
-            dataType={data.dataType || 'current'}
-            containerWidth={nodeSize.width}
-            containerHeight={nodeSize.height}
+        {Chart && (
+          <Chart 
+            activeGraphUpdate={activeGraphUpdate}
+            chartData={chartData} //данные 
+            width={nodeSize.width}
+            height={nodeSize.height - 60}
           />
-        </React.Suspense>
+        )}
       </div>
     </div>
   );
@@ -772,7 +676,7 @@ const DataSourceNode = ({ data, isConnectable, selected, id }) => {
 
   // Обработчик подключения
   const handleConnect = useCallback(() => {
-    setIsConnected(true);
+    setIsConnected(true); 
     
     if (data.type === 'source') {
       if (data.onDataGenerate) {
@@ -845,102 +749,19 @@ const DataSourceNode = ({ data, isConnectable, selected, id }) => {
           }}
         />
       )}
-      
-      <div className="data-source-header">
-        <div className="data-source-icon">
-          <i className={`bi ${data.icon || 'bi-database'}`}></i>
-        </div>
-        <div className="data-source-info">
-          <h6>{data.label || 'Источник данных'}</h6>
-          <small className="text-muted">{data.description || 'Генерирует данные'}</small>
-        </div>
-      </div>
-      
-      <div className="data-source-controls">
-        {data.type === 'source' && (
-          <>
-            <div className="form-group mb-2">
-              <label className="form-label" style={{ fontSize: '12px' }}>
-                Количество данных: {dataCount}
-              </label>
-              <input
-                type="range"
-                className="form-range"
-                min="100"
-                max="10000"
-                step="100"
-                value={dataCount}
-                onChange={(e) => setDataCount(parseInt(e.target.value))}
-                style={{ width: '100%' }}
-              />
-            </div>
-            
-            <div className="btn-group btn-group-sm w-100" role="group">
-              <button
-                className={`btn ${isConnected ? 'btn-success' : 'btn-outline-success'}`}
-                onClick={handleConnect}
-                disabled={isConnected}
-              >
-                <i className="bi bi-play"></i> Старт
-              </button>
-              <button
-                className={`btn ${!isConnected ? 'btn-danger' : 'btn-outline-danger'}`}
-                onClick={handleDisconnect}
-                disabled={!isConnected}
-              >
-                <i className="bi bi-stop"></i> Стоп
-              </button>
-            </div>
-            
-            <div className="mt-2">
-              <small className="text-muted">
-                Тип: {data.dataType || 'Случайные данные'}
-              </small>
-            </div>
-          </>
-        )}
-        
-        {data.type === 'filter' && (
-          <div className="filter-controls">
-            <div className="form-group mb-2">
-              <label className="form-label" style={{ fontSize: '12px' }}>
-                Минимальное значение
-              </label>
-              <input
-                type="range"
-                className="form-range"
-                min="0"
-                max="200"
-                step="1"
-                defaultValue="50"
-                style={{ width: '100%' }}
-              />
-            </div>
-            <div className="form-group mb-2">
-              <label className="form-label" style={{ fontSize: '12px' }}>
-                Максимальное значение
-              </label>
-              <input
-                type="range"
-                className="form-range"
-                min="0"
-                max="200"
-                step="1"
-                defaultValue="150"
-                style={{ width: '100%' }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-      
-      <div className="data-source-status">
-        <span className={`badge ${isConnected ? 'bg-success' : 'bg-secondary'}`}>
-          {isConnected ? 'Подключено' : 'Отключено'}
-        </span>
-        <div className="size-indicator">
-          {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
-        </div>
+      <div className='data-source-header'>
+        <h6>
+          Доп. Блок 1
+        </h6>
+        <input
+        style={{
+              width: nodeSize.width,
+              height: nodeSize.height,
+              minWidth: 200,
+              minHeight: 80
+        }}>
+
+        </input>
       </div>
     </div>
   );
@@ -1082,11 +903,7 @@ const Graph = () => {
               data: {
                 ...node.data,
                 initialData: data,
-                dataSourceInfo: data.sourceInfo || {
-                  table: 'unknown',
-                  xAxis: 'time',
-                  yAxis: 'value'
-                }
+                dataSourceInfo: data.sourceInfo
               }
             };
           }
@@ -1094,6 +911,7 @@ const Graph = () => {
         })
       );
       console.log(`Данные обновлены для узла ${nodeId}:`, data.length, 'точек');
+      //console.log(data)
     };
     
     return () => {
@@ -1163,8 +981,8 @@ const Graph = () => {
         realTime: true,
         initialData: [],
         series: [],
-        width: 400,
-        height: 300
+        width: 1200,
+        height: 600
       }
     };
     

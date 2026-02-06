@@ -54,8 +54,8 @@ const Admin = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Sql })
-      });
 
+      });
       if (!response.ok) throw new Error('Ошибка загрузки данных');
       
       const result = await response.json();

@@ -8,6 +8,8 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "bootstrap": "^5.3.7",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
     "firefox": "^0.0.1",
     "lightweight-charts": "^5.0.8",
     "react": "^19.1.1",

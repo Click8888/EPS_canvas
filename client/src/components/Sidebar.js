@@ -85,7 +85,6 @@ const Sidebar = ({
     try {
       setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
       
-      // УБИРАЕМ ЛИМИТ 100
       const sql = `SELECT * FROM ${tableName} ORDER BY 1 ASC`; // Сортируем по первому столбцу
       
       const response = await fetch(`${API_BASE_URL}/execute-query`, {

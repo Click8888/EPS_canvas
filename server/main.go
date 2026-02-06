@@ -57,7 +57,7 @@ func main() {
         api.POST("/generation/stop", routes.StopGenerationHandler)
         api.GET("/generation/status", routes.GenerationStatusHandler)
 
-        // Эндпоинты для управления генерацией данных
+        //Эндпоинты админки
         api.POST("/deltable", routes.DeleteTable)
         api.POST("/addrow", routes.AddRow)
         api.POST("/delrow", routes.DeleteRow)
