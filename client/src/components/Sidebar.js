@@ -27,7 +27,7 @@ const Sidebar = ({
   const [generationState, setGenerationState] = useState({
     isGenerating: false,
     isLoading: false,
-    interval: 20,
+    interval: 50,
     chartId: 'default-chart'
   });
 
@@ -524,7 +524,7 @@ const Sidebar = ({
               <div className="sidebar-section">
                 <h6 className="sidebar-section-title">
                   <i className="bi bi-plus-circle"></i>
-                  Добавить узел
+                  Добавить компонент
                 </h6>
                 <div className="add-node-buttons">
                   <button 
@@ -537,13 +537,13 @@ const Sidebar = ({
                     className="btn btn-outline-success btn-sm w-100 mb-2"
                     onClick={onAddDataSourceNode}
                   >
-                    <i className="bi bi-database"></i> Источник данных
+                    <i className="bi bi-database"></i> Векторная диаграмма(None)
                   </button>
                   <button 
                     className="btn btn-outline-warning btn-sm w-100"
                     onClick={onAddProcessorNode}
                   >
-                    <i className="bi bi-gear"></i> Обработчик
+                    <i className="bi bi-gear"></i> Доп. инструмент
                   </button>
                 </div>
               </div>

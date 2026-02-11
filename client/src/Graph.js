@@ -30,7 +30,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     isSettingsOpen: false,
     lastUpdateTime: null // Время последнего обновления
   });
-  const [intervalInput, setIntervalInput] = useState("20");
+  const [intervalInput, setIntervalInput] = useState("100");
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [pollingIntervalId, setPollingIntervalId] = useState(null);
   const [wsConnection, setWsConnection] = useState(null);
@@ -41,141 +41,140 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   
   // Функция для загрузки данных из БД
   const fetchDataFromDB = useCallback(async () => {
-    if (!dataSourceInfo || !dataSourceInfo.table || !dataSourceInfo.xAxis || !dataSourceInfo.yAxis) {
-      console.log('Нет информации об источнике данных');
-      return;
+  if (!dataSourceInfo || !dataSourceInfo.table || !dataSourceInfo.xAxis || !dataSourceInfo.yAxis) {
+    console.log('Нет информации об источнике данных');
+    return;
+  }
+
+  try {
+    setIsUpdating(true);
+    
+    // Формируем SQL запрос БЕЗ лимита
+    let sql = `SELECT * FROM ${dataSourceInfo.table}`;
+    
+    // Если есть время последнего обновления, фильтруем новые данные
+    if (updateConfig.lastUpdateTime) {
+      const lastTime = updateConfig.lastUpdateTime.toISOString();
+      sql += ` WHERE ${dataSourceInfo.xAxis} > '${lastTime}'`;
     }
+    
+    sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
 
-    try {
-      setIsUpdating(true);
-      
-      // Формируем SQL запрос БЕЗ лимита
-      let sql = `SELECT * FROM ${dataSourceInfo.table}`;
-      
-      // Если есть время последнего обновления, фильтруем новые данные
-      if (updateConfig.lastUpdateTime) {
-        const lastTime = updateConfig.lastUpdateTime.toISOString().slice(0, 19).replace('T', ' ');
-        sql += ` WHERE ${dataSourceInfo.xAxis} > '${lastTime}'`;
-      }
-      
-      sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
+    //console.log('Выполняем SQL:', sql);
+    
+    const response = await fetch('http://localhost:8080/api/execute-query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql })
+    });
 
-      console.log('Выполняем SQL:', sql);
+    if (!response.ok) throw new Error('Ошибка загрузки данных из БД');
+    
+    const result = await response.json();
+    const newData = result.data || result;
+    
+    if (newData && newData.length > 0) {
+      //console.log(`Получено ${newData.length} новых записей из БД`);
       
-      const response = await fetch('http://localhost:8080/api/execute-query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql })
-      });
-
-      if (!response.ok) throw new Error('Ошибка загрузки данных из БД');
-      
-      const result = await response.json();
-      const newData = result.data || result;
-      
-      if (newData && newData.length > 0) {
-        console.log(`Получено ${newData.length} новых записей из БД`);
-        
-        // Форматируем данные для графика
-        const formattedData = newData
-          .filter(row => row[dataSourceInfo.xAxis] != null && row[dataSourceInfo.yAxis] != null)
-          .map((row, index) => {
-            const xValue = row[dataSourceInfo.xAxis];
-            const yValue = parseFloat(row[dataSourceInfo.yAxis]);
-            
-            // Преобразуем время
-            let timeValue;
-            if (xValue instanceof Date) {
-              timeValue = xValue.getTime() / 1000;
-            } else if (typeof xValue === 'string') {
-              // Пытаемся разобрать строку времени
-              const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
-              if (timeMatch) {
-                const hours = parseInt(timeMatch[1]) || 0;
-                const minutes = parseInt(timeMatch[2]) || 0;
-                const seconds = parseInt(timeMatch[3]) || 0;
-                const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
-                timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-              } else {
-                // Пытаемся преобразовать в timestamp
-                const date = new Date(xValue);
-                if (!isNaN(date.getTime())) {
-                  timeValue = date.getTime() / 1000;
-                } else {
-                  timeValue = parseFloat(xValue) || index;
-                }
-              }
-            } else if (typeof xValue === 'number') {
-              timeValue = xValue;
+      // Форматируем данные для графика
+      const formattedData = newData
+        .filter(row => row[dataSourceInfo.xAxis] != null && row[dataSourceInfo.yAxis] != null)
+        .map((row, index) => {
+          const xValue = row[dataSourceInfo.xAxis];
+          const yValue = parseFloat(row[dataSourceInfo.yAxis]);
+          
+          // Преобразуем время
+          let timeValue;
+          if (xValue instanceof Date) {
+            timeValue = xValue.getTime() / 1000;
+          } else if (typeof xValue === 'string') {
+            // Пытаемся разобрать строку времени
+            const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
+            if (timeMatch) {
+              const hours = parseInt(timeMatch[1]) || 0;
+              const minutes = parseInt(timeMatch[2]) || 0;
+              const seconds = parseInt(timeMatch[3]) || 0;
+              const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
+              timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
             } else {
-              timeValue = index;
+              // Пытаемся преобразовать в timestamp
+              const date = new Date(xValue);
+              if (!isNaN(date.getTime())) {
+                timeValue = date.getTime() / 1000;
+              } else {
+                timeValue = parseFloat(xValue) || index;
+              }
             }
-            
-            return {
-              time: timeValue,
-              value: isNaN(yValue) ? 0 : yValue,
-              originalTime: xValue,
-              originalValue: row[dataSourceInfo.yAxis],
-              seriesId: 'database',
-              timestamp: Date.now(),
-              overload: row.is_overload || false
-            };
-          });
-        
-        // Сортируем по времени
-        formattedData.sort((a, b) => a.time - b.time);
-        
-        // Обновляем данные графика - добавляем новые точки к существующим
-        setChartData(prev => {
-          // Проверяем только самые новые точки на дубликаты
-          const existingTimes = new Set();
-          const lastExistingPoints = prev.slice(-formattedData.length);
-          lastExistingPoints.forEach(p => existingTimes.add(p.time));
-          
-          // Фильтруем новые данные, оставляем только те, которых еще нет
-          const uniqueNewData = formattedData.filter(newPoint => {
-            const hasDuplicate = Array.from(existingTimes).some(existingTime => 
-              Math.abs(existingTime - newPoint.time) < 0.001
-            );
-            return !hasDuplicate;
-          });
-          
-          // Если есть уникальные новые данные, добавляем их
-          if (uniqueNewData.length > 0) {
-            const updatedData = [...prev, ...uniqueNewData];
-            // Сортируем по времени
-            updatedData.sort((a, b) => a.time - b.time);
-            return updatedData;
+          } else if (typeof xValue === 'number') {
+            timeValue = xValue;
+          } else {
+            timeValue = index;
           }
           
-          return prev;
+          return {
+            time: timeValue,
+            value: isNaN(yValue) ? 0 : yValue,
+            originalTime: xValue,
+            originalValue: row[dataSourceInfo.yAxis],
+            seriesId: 'database',
+            timestamp: Date.now(),
+            overload: row.is_overload || false
+          };
+        });
+      
+      // Сортируем по времени
+      formattedData.sort((a, b) => a.time - b.time);
+      
+      // Обновляем данные графика - добавляем новые точки к существующим
+      setChartData(prev => {
+        // СОЗДАЕМ НАБОР ВСЕХ СУЩЕСТВУЮЩИХ ВРЕМЕННЫХ МЕТОК С ВЫСОКОЙ ТОЧНОСТЬЮ
+        const existingTimes = new Set();
+        prev.forEach(point => {
+          // Используем округление до 3 знаков для сравнения
+          existingTimes.add(Math.round(point.time * 1000) / 1000);
         });
         
-        // Обновляем время последнего обновления
-        if (formattedData.length > 0) {
-          const lastRow = newData[newData.length - 1];
-          const lastTime = lastRow[dataSourceInfo.xAxis];
-          
-          try {
-            const date = new Date(lastTime);
-            if (!isNaN(date.getTime())) {
-              setUpdateConfig(prev => ({
-                ...prev,
-                lastUpdateTime: date
-              }));
-            }
-          } catch (e) {
-            console.error('Ошибка парсинга времени:', e);
+        // Фильтруем новые данные, оставляем только те, которых еще нет
+        const uniqueNewData = formattedData.filter(newPoint => {
+          const roundedTime = Math.round(newPoint.time * 1000) / 1000;
+          return !existingTimes.has(roundedTime);
+        });
+        
+        // Если есть уникальные новые данные, добавляем их
+        if (uniqueNewData.length > 0) {
+          const updatedData = [...prev, ...uniqueNewData];
+          // Сортируем по времени
+          updatedData.sort((a, b) => a.time - b.time);
+          return updatedData;
+        }
+        
+        return prev;
+      });
+      
+      // Обновляем время последнего обновления
+      if (formattedData.length > 0) {
+        const lastRow = newData[newData.length - 1];
+        const lastTime = lastRow[dataSourceInfo.xAxis];
+        try {
+          const date = new Date(lastTime);
+          if (!isNaN(date.getTime())) {
+            setUpdateConfig(prev => ({
+              ...prev,
+              lastUpdateTime: date
+            }));
           }
+        } catch (e) {
+          console.error('Ошибка парсинга времени:', e);
         }
       }
-      
-    } catch (error) {
-      console.error('Ошибка загрузки данных из БД:', error);
-    } finally {
-      setIsUpdating(false);
     }
-  }, [dataSourceInfo, updateConfig.lastUpdateTime]);
+    
+  } catch (error) {
+    console.error('Ошибка загрузки данных из БД:', error);
+  } finally {
+    setIsUpdating(false);
+  }
+}, [dataSourceInfo, updateConfig.lastUpdateTime]);
 
 
   // Инициализация данных графика
@@ -256,32 +255,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       setPollingIntervalId(null);
     }
 
-  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, fetchDataFromDB]);
-
-  // Закрытие панели настроек при клике вне её
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        settingsPanelRef.current && 
-        !settingsPanelRef.current.contains(event.target) &&
-        !event.target.closest('.settings-toggle-btn') &&
-        !event.target.closest('.update-toggle-btn')
-      ) {
-        setUpdateConfig(prev => ({
-          ...prev,
-          isSettingsOpen: false
-        }));
-      }
-    };
-    
-    if (updateConfig.isSettingsOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [updateConfig.isSettingsOpen]);
+  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo]);
 
 
   // Тоггл автоматического обновления
@@ -299,15 +273,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       console.log('Автообновление выключено');
     }
   }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo]);
-
-  // Открыть/закрыть настройки обновления
-  const toggleSettings = useCallback(() => {
-    setUpdateConfig(prev => ({
-      ...prev,
-      isSettingsOpen: !prev.isSettingsOpen
-    }));
-  }, []);
-
 
   // Кастомный ресайзер с квадратными ручками
   const CustomResizer = () => {
@@ -535,90 +500,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
-          
-          {/* Кнопка настройки */}
-          <button
-            className={`btn btn-sm settings-toggle-btn ${updateConfig.isSettingsOpen ? 'btn-primary' : 'btn-outline-secondary'}`}
-            onClick={toggleSettings}
-            title="Настройки обновления"
-          >
-            <i className={`bi ${updateConfig.isSettingsOpen ? 'bi-chevron-up' : 'bi-gear'}`}></i>
-          </button>
         </div>
       </div>
-      
-      {/* Выдвижная панель настроек обновления */}
-      {updateConfig.isSettingsOpen && (
-        <div ref={settingsPanelRef} className="update-settings-panel">
-          <div className="settings-header">
-            <small>Настройки обновления из БД</small>
-            <button 
-              className="btn-close btn-close-white btn-sm"
-              onClick={toggleSettings}
-              style={{ fontSize: '10px' }}
-            />
-          </div>
-          
-          <div className="settings-body">
-            <div className="mb-3">
-              <label className="form-label" style={{ fontSize: '12px', marginBottom: '8px' }}>
-                Интервал опроса БД (100-10000 мс)
-              </label>
-              <div className="input-group input-group-sm">
-                <input
-                  type="number"
-                  className="form-control form-control-sm"
-                  value={intervalInput}
-                  // onChange={handleIntervalInputChange}
-                  // onBlur={handleIntervalInputBlur}
-                  min="100"
-                  max="10000"
-                  step="100"
-                  style={{
-                    textAlign: 'center',
-                    backgroundColor: '#333',
-                    borderColor: '#555',
-                    color: '#fff',
-                    fontSize: '13px'
-                  }}
-                />
-                <span className="input-group-text" style={{ backgroundColor: '#333', borderColor: '#555', color: '#ccc' }}>
-                  мс
-                </span>
-              </div>
-              <div className="form-text text-muted mt-1" style={{ fontSize: '10px' }}>
-                Частота опроса базы данных для новых записей
-              </div>
-            </div>
-            
-            {dataSourceInfo && (
-              <div className="mb-3">
-                <div className="alert alert-info py-1 px-2" style={{ fontSize: '11px' }}>
-                  
-                </div>
-              </div>
-            )}
-            
-            <button
-              className="btn btn-sm btn-outline-info w-100"
-              onClick={fetchDataFromDB}
-              disabled={isUpdating || !dataSourceInfo}
-            >
-              {isUpdating ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
-                  Загрузка...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-arrow-clockwise me-1"></i>
-                  Загрузить сейчас
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
       
 
       <div className="chart-node-content">
@@ -647,63 +530,6 @@ const DataSourceNode = ({ data, isConnectable, selected, id }) => {
       setNodeSize({ width: data.width, height: data.height });
     }
   }, [data.width, data.height]);
-
-  // Функция для генерации случайных данных
-  const generateRandomData = useCallback((count = 100) => {
-    const newData = [];
-    const now = new Date();
-    const baseTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-    
-    for (let i = 0; i < count; i++) {
-      const timeOffset = i * 0.1;
-      const value = Math.random() * 100 + 50 + Math.sin(i * 0.1) * 20;
-      const overload = Math.random() > 0.95;
-      
-      const timeInSeconds = baseTime + timeOffset;
-      const hours = Math.floor(timeInSeconds / 3600) % 24;
-      const minutes = Math.floor((timeInSeconds % 3600) / 60);
-      const seconds = (timeInSeconds % 60).toFixed(3);
-      
-      newData.push({
-        time: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds}`,
-        value: value.toFixed(3),
-        overload: overload
-      });
-    }
-    
-    return newData;
-  }, []);
-
-  // Обработчик подключения
-  const handleConnect = useCallback(() => {
-    setIsConnected(true); 
-    
-    if (data.type === 'source') {
-      if (data.onDataGenerate) {
-        const initialData = generateRandomData(dataCount);
-        data.onDataGenerate(initialData);
-      }
-      
-      const id = setInterval(() => {
-        if (data.onDataGenerate) {
-          const newData = generateRandomData(10);
-          data.onDataGenerate(newData);
-        }
-      }, 1000);
-      
-      setIntervalId(id);
-    }
-  }, [data, dataCount, generateRandomData]);
-
-  // Обработчик отключения
-  const handleDisconnect = useCallback(() => {
-    setIsConnected(false);
-    
-    if (intervalId) {
-      clearInterval(intervalId);
-      setIntervalId(null);
-    }
-  }, [intervalId]);
 
   useEffect(() => {
     return () => {
@@ -768,7 +594,7 @@ const DataSourceNode = ({ data, isConnectable, selected, id }) => {
 };
 
 // Кастомный узел для обработки данных
-const ProcessorNode = ({ data, isConnectable, selected, id }) => {
+const ProcessorNode = ({ data, selected, id }) => {
   const [isActive, setIsActive] = useState(true);
   const [processedCount, setProcessedCount] = useState(0);
   const [nodeSize, setNodeSize] = useState({ width: 300, height: 200 });

@@ -27,6 +27,7 @@ const defaultOption = {
   },
   xAxis: {
     type: 'category',
+    data: [],
     minorTick: {
       show: true
     },
@@ -145,16 +146,16 @@ const Chart = ({
         }
       ]
     };
-
+    //console.log("123123132", formattedData)
     setOption(newOption);
     
     // Обновляем график с анимацией
     chartInstance.setOption(newOption, true);
 
-    console.log('График обновлен:', {
-      timePoints: formattedData.time,
-      dataPoints: formattedData.values
-    });
+    // console.log('График обновлен:', {
+    //   timePoints: formattedData.time,
+    //   dataPoints: formattedData.values
+    // });
 
   }, [chartData, activeGraphUpdate, chartInstance]);
 

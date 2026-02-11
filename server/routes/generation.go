@@ -3,7 +3,6 @@ package routes
 import (
 	"log"
 	"math"
-	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -38,7 +37,7 @@ type GenerationStatus struct {
 // Структура для данных графика
 type ChartData struct {
 	Type      string    `json:"type"`              // "current" или "voltage"
-	Time      float64   `json:"time"`              // время в секундах с точкой отсчета
+	Time      float64   `json:"time"`              // время в секундах с точки отсчета
 	Value     float64   `json:"value"`             // значение
 	ChartID   string    `json:"chartId,omitempty"` // ID графика для фильтрации
 	Timestamp time.Time `json:"timestamp"`         // реальное время
@@ -146,10 +145,10 @@ func StartGenerationHandler(c *gin.Context) {
 	stopGeneration = make(chan bool)
 	isGenerating = true
 
-	go generateCurrentMeasurements(database.DB, stopGeneration, request.Interval, request.ChartID)
+	go generateSineWaveData(database.DB, stopGeneration, request.Interval, request.ChartID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "Генерация данных запущена",
+		"message":  "Генерация синусоиды запущена",
 		"status":   "running",
 		"interval": request.Interval,
 	})
@@ -268,195 +267,109 @@ func GetLatestDataHandler(c *gin.Context) {
 	})
 }
 
-// Функция генерации данных
-func generateCurrentMeasurements(db *gorm.DB, stopChan chan bool, interval int, chartID string) {
+// Функция генерации синусоидальных данных
+func generateSineWaveData(db *gorm.DB, stopChan chan bool, interval int, chartID string) {
 	ticker := time.NewTicker(time.Duration(interval) * time.Millisecond)
 	defer ticker.Stop()
 
 	// Начальное время для относительного отсчета
 	startTime := time.Now()
 
-	// Счетчик для уникальных временных меток
-	timeCounter := 0.0
-
+	// Параметры синусоид
+	currentAmplitude := 2.0      // Амплитуда тока
+	currentFrequency := 0.5      // Частота тока (0.5 Гц)
+	currentOffset := 2.0         // Смещение тока
+	
+	voltageAmplitude := 4.0      // Амплитуда напряжения
+	voltageFrequency := 0.3      // Частота напряжения (0.3 Гц)
+	voltageOffset := 6.0         // Смещение напряжения
 
 	for {
 		select {
 		case <-stopChan:
-			log.Println("Генерация данных остановлена")
+			log.Println("Генерация синусоиды остановлена")
 			return
 		case <-ticker.C:
-			// Увеличиваем счетчик времени
+			// Текущее время в секундах от начала генерации
 			elapsed := time.Since(startTime)
 			timeInSeconds := elapsed.Seconds()
 
-			// Генерация данных
-			data := generateDataPoint(timeCounter, timeInSeconds)
-			timeCounter += float64(interval) / 1000.0 // Увеличиваем на интервал в секундах
+			// Генерация синусоидальных значений
+			currentValue := currentAmplitude*math.Sin(2*math.Pi*currentFrequency*timeInSeconds) + currentOffset
+			voltageValue := voltageAmplitude*math.Sin(2*math.Pi*voltageFrequency*timeInSeconds) + voltageOffset
 
-			// Создаем данные для графика с корректным временем
+			// Округляем до 3 знаков
+			currentValue = math.Round(currentValue*1000) / 1000
+			voltageValue = math.Round(voltageValue*1000) / 1000
+
+			// Создаем данные для графика
 			currentData := ChartData{
 				Type:      "current",
-				Time:      timeInSeconds, // Используем реальное прошедшее время
-				Value:     data.CurrentValue,
+				Time:      timeInSeconds,
+				Value:     currentValue,
 				ChartID:   chartID,
-				Timestamp: data.MeasurementTime,
-				Overload:  data.IsOverload,
+				Timestamp: time.Now(),
+				Overload:  false,
 			}
 
 			voltageData := ChartData{
 				Type:      "voltage",
-				Time:      timeInSeconds, // Такое же время для синхронизации
-				Value:     data.VoltageValue,
+				Time:      timeInSeconds,
+				Value:     voltageValue,
 				ChartID:   chartID,
-				Timestamp: data.MeasurementTime,
-				Overload:  data.IsOverload,
+				Timestamp: time.Now(),
+				Overload:  false,
 			}
 
 			// Отправляем через WebSocket
 			broadcast <- currentData
 			broadcast <- voltageData
 
-			// Вставка в базу данных
-			err := insertData(db, data)
+			// Сохраняем в БД
+			measurement := CurrentMeasurement{
+				MeasurementTime: time.Now(),
+				CurrentValue:    currentValue,
+				VoltageValue:    voltageValue,
+				CircuitID:       "circuit_B",
+				SensorModel:     "I-Sensor-Pro",
+				IsOverload:      false,
+			}
+
+			err := insertData(db, measurement)
 			if err != nil {
 				log.Printf("Ошибка вставки данных: %v", err)
 			}
-
 		}
 	}
 }
 
-// Функция генерации точки данных (без изменений, но добавлены комментарии)
-func generateDataPoint(counter float64, timeInSeconds float64) CurrentMeasurement {
-	now := time.Now()
-	isOverload := false
-	var currentVal float64
-	var voltageVal float64
-
-	// Инициализируем генератор случайных чисел с seed на основе времени
-	rand.Seed(now.UnixNano())
-
-	// Аномальные значения тока (перегрузки)
-	currentOverloadValues := []float64{9.123, 0.045, 8.765, 0.123, 7.891, 0.234, 10.456, 0.067}
-	// Аномальные значения напряжения (скачки/просадки)
-	voltageOverloadValues := []float64{0.5, 15.0, 0.1, 18.0, 0.05, 20.0, 0.01, 25.0}
-
-	// Основные диапазоны
-	baseMinCurrent := 1.8
-	baseMaxCurrent := 2.6
-	baseMinVoltage := 2.0
-	baseMaxVoltage := 10.0
-
-	// Используем синусоидальный паттерн для создания реалистичных данных
-	// Частота в герцах (сколько полных циклов в секунду)
-	frequencyCurrent := 0.5 // 0.5 Гц = один цикл каждые 2 секунды
-	frequencyVoltage := 0.3 // 0.3 Гц = один цикл каждые ~3.3 секунды
-
-	// Базовое значение с синусоидальным изменением
-	baseCurrent := (baseMinCurrent+baseMaxCurrent)/2 +
-		math.Sin(2*math.Pi*frequencyCurrent*timeInSeconds)*0.4
-
-	baseVoltage := (baseMinVoltage+baseMaxVoltage)/2 +
-		math.Sin(2*math.Pi*frequencyVoltage*timeInSeconds)*3.0
-
-	// Определяем, будет ли это перегрузка (примерно каждые 5 секунд)
-	overloadPeriod := 5.0 // секунды
-	overloadPhase := math.Mod(timeInSeconds, overloadPeriod*2)
-
-	// Перегрузка происходит в определенные фазы
-	if overloadPhase >= overloadPeriod-0.5 && overloadPhase < overloadPeriod+0.5 {
-		isOverload = true
-		// Выбираем случайное аномальное значение
-		overloadIndex := int(math.Mod(float64(int(counter)), float64(len(currentOverloadValues))))
-		currentVal = currentOverloadValues[overloadIndex]
-		voltageVal = voltageOverloadValues[overloadIndex]
-	} else {
-		// Нормальные значения с шумом
-		// Ток с небольшими флуктуациями
-		currentNoise := (rand.Float64() - 0.5) * 0.1
-		// Добавляем небольшие всплески каждые ~0.5 секунды
-		spikeChance := math.Sin(2 * math.Pi * 2 * timeInSeconds)
-		if spikeChance > 0.9 && rand.Float64() < 0.3 {
-			currentNoise += rand.Float64() * 0.2
-		}
-
-		currentVal = baseCurrent + currentNoise
-
-		// Напряжение с более плавными изменениями
-		voltageNoise := (rand.Float64() - 0.5) * 0.2
-		// Добавляем тренд на основе времени
-		trend := math.Sin(2*math.Pi*0.1*timeInSeconds) * 0.5
-
-		voltageVal = baseVoltage + voltageNoise + trend
-
-		// Гауссовский шум
-		currentVal += rand.NormFloat64() * 0.02
-		voltageVal += rand.NormFloat64() * 0.05
-	}
-
-	// Гарантируем границы значений
-	currentVal = math.Max(baseMinCurrent-0.5, math.Min(baseMaxCurrent+0.5, currentVal))
-	voltageVal = math.Max(baseMinVoltage-1.0, math.Min(baseMaxVoltage+1.0, voltageVal))
-
-	// Округляем значения
-	currentVal = math.Round(currentVal*1000) / 1000
-	voltageVal = math.Round(voltageVal*1000) / 1000
-
-	// Дополнительная логика для интересных паттернов
-	// Каждые 30 секунд добавляем особый паттерн
-	if math.Mod(timeInSeconds, 30) < 2 {
-		// Паттерн "пила"
-		sawtooth := math.Mod(timeInSeconds, 2) / 2
-		currentVal = baseMinCurrent + (baseMaxCurrent-baseMinCurrent)*sawtooth
-		voltageVal = baseMinVoltage + (baseMaxVoltage-baseMinVoltage)*(1-sawtooth)
-	}
-
-	// Каждые 45 секунд - синусоидальный паттерн
-	if math.Mod(timeInSeconds, 45) < 5 {
-		fastSine := math.Sin(2*math.Pi*5*timeInSeconds) * 0.3
-		currentVal += fastSine
-		voltageVal -= fastSine * 2
-	}
-
-	return CurrentMeasurement{
-		ID:              int(counter),
-		MeasurementTime: now,
-		CurrentValue:    currentVal,
-		VoltageValue:    voltageVal,
-		CircuitID:       "circuit_B",
-		SensorModel:     "I-Sensor-Pro",
-		IsOverload:      isOverload,
-	}
-}
-
-// Вставка данных в БД - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Вставка данных в БД
 func insertData(db *gorm.DB, data CurrentMeasurement) error {
-    // Форматируем время в строку, которая точно поместится в 30 символов
-    timeStr := data.MeasurementTime.Format("2006-01-02 15:04:05.999")
-    
-    measurement := map[string]interface{}{
-        "measurement_time": timeStr, // Только как строка
-        "current_value":    data.CurrentValue,
-        "voltage_value":    data.VoltageValue,
-        "circuit_id":       data.CircuitID,
-        "sensor_model":     data.SensorModel,
-        "is_overload":      data.IsOverload,
-    }
+	// Форматируем время в строку
+	timeStr := data.MeasurementTime.UTC().Format(time.RFC3339Nano)
+	
+	measurement := map[string]interface{}{
+		"measurement_time": timeStr,
+		"current_value":    data.CurrentValue,
+		"voltage_value":    data.VoltageValue,
+		"circuit_id":       data.CircuitID,
+		"sensor_model":     data.SensorModel,
+		"is_overload":      data.IsOverload,
+	}
 
-    result := db.Table("current_measurements").Create(measurement)
-    
-    if result.Error != nil {
-        // Альтернативный подход с более простым SQL
-        sql := `INSERT INTO current_measurements 
-                (measurement_time, current_value, voltage_value, circuit_id, sensor_model, is_overload) 
-                VALUES (?, ?, ?, ?, ?, ?)`
-        
-        result = db.Exec(sql, timeStr, data.CurrentValue, data.VoltageValue,
-            data.CircuitID, data.SensorModel, data.IsOverload)
-    }
+	result := db.Table("current_measurements").Create(measurement)
+	
+	if result.Error != nil {
+		// Альтернативный подход с более простым SQL
+		sql := `INSERT INTO current_measurements 
+				(measurement_time, current_value, voltage_value, circuit_id, sensor_model, is_overload) 
+				VALUES (?, ?, ?, ?, ?, ?)`
+		
+		result = db.Exec(sql, timeStr, data.CurrentValue, data.VoltageValue,
+			data.CircuitID, data.SensorModel, data.IsOverload)
+	}
 
-    return result.Error
+	return result.Error
 }
 
 // API для получения истории данных
