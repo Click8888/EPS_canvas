@@ -1,6 +1,3 @@
-// src/index.js
-
-// Импорт ДОЛЖЕН БЫТЬ ПЕРВЫМ в файле
 import './setupResizeObserver';
 
 import React from 'react';
