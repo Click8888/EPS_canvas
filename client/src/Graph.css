@@ -17,8 +17,8 @@
 
 /* Стили для кастомных узлов */
 .chart-node {
-  width: 400px;
-  height: 300px;
+  width: 1200px;
+  height: 600px;
   background-color: #2a2a2a;
   border: 1px solid #444;
   border-radius: 8px;
@@ -58,7 +58,7 @@
 }
 
 .data-source-node {
-  width: 300px;
+  width: 400px;
   background-color: #2a2a2a;
   border: 1px solid #444;
   border-radius: 8px;
@@ -784,3 +784,110 @@
   user-select: none;
   pointer-events: none;
 }
+
+.chart-node {
+  background-color: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: none; /* Убираем анимацию для плавного ресайза */
+}
+
+.chart-node-header {
+  padding: 4px 8px;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  height: 40px; /* Фиксированная высота заголовка */
+}
+
+.chart-node-content {
+  flex: 1;
+  min-height: 0; /* Важно для корректной работы flexbox */
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Стили для ресайз-хендлов */
+.resize-handle-square {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background-color: #4dabf7;
+  border: 2px solid #ffffff;
+  border-radius: 2px;
+  z-index: 1000;
+  opacity: 0.9;
+  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+
+.resize-handle-square:hover {
+  background-color: #74c0fc;
+  transform: scale(1.1);
+  opacity: 1;
+}
+
+.resize-handle-square.top-left {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+
+.resize-handle-square.top-right {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.resize-handle-square.bottom-left {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.resize-handle-square.bottom-right {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+}
+
+.resize-handle-square.top {
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.resize-handle-square.right {
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.resize-handle-square.bottom {
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.resize-handle-square.left {
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.resize-indicator {
+  font-size: 11px;
+  color: #888;
+  margin-left: 10px;
+}
+

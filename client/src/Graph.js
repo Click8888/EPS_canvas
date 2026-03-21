@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, getCursor, useRef } from 'react';
 import ReactFlow, {
+  
   MiniMap,
   Controls,
   Background,
@@ -22,7 +23,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [activeGraphUpdate, setActiveGraphUpdate] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [chartSeries, setChartSeries] = useState([]);
-  const [nodeSize, setNodeSize] = useState({ width: 400, height: 300 });
+  const [nodeSize, setNodeSize] = useState({ width: 600, height: 1200 });
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
     interval: 20, // Интервал обновления из БД в мс
@@ -38,6 +39,10 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const nodeRef = useRef(null);
   const updateIntervalRef = useRef(null);
   const settingsPanelRef = useRef(null);
+  const chartWrapperRef = useRef(null);
+  
+  // Flag to track if we're interacting with the chart
+  const isChartInteractionRef = useRef(false);
   
   // Функция для загрузки данных из БД
   const fetchDataFromDB = useCallback(async () => {
@@ -274,9 +279,135 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     }
   }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo]);
 
+  // Prevent mouse events from reaching ReactFlow
+  const handleMouseDown = useCallback((e) => {
+    // Stop propagation to prevent ReactFlow from capturing the event
+    e.stopPropagation();
+  }, []);
+
+  const handleMouseUp = useCallback((e) => {
+    e.stopPropagation();
+  }, []);
+
+  const handleMouseMove = useCallback((e) => {
+    e.stopPropagation();
+  }, []);
+
+  const handleWheel = useCallback((e) => {
+    // Allow wheel events for zooming the chart, but prevent propagation
+    e.stopPropagation();
+  }, []);
+
+  // Handle chart interaction start
+  const handleChartInteractionStart = useCallback(() => {
+    isChartInteractionRef.current = true;
+  }, []);
+
+  // Handle chart interaction end
+  const handleChartInteractionEnd = useCallback(() => {
+    // Use setTimeout to allow chart interactions to complete
+    setTimeout(() => {
+      isChartInteractionRef.current = false;
+    }, 100);
+  }, []);
+
   // Кастомный ресайзер с квадратными ручками
   const CustomResizer = () => {
     if (!selected) return null;
+
+    const startResize = (e, direction) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startWidth = nodeSize.width;
+      const startHeight = nodeSize.height;
+      
+      setIsResizing(true);
+      document.body.style.cursor = getCursor(direction);
+      
+      const handleMouseMove = (moveEvent) => {
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
+        
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        
+        // В зависимости от направления изменяем размеры
+        switch (direction) {
+          case 'right':
+            newWidth = Math.max(720, startWidth + deltaX);
+            break;
+          case 'left':
+            newWidth = Math.max(720, startWidth - deltaX);
+            break;
+          case 'bottom':
+            newHeight = Math.max(400, startHeight + deltaY);
+            break;
+          case 'top':
+            newHeight = Math.max(400, startHeight - deltaY);
+            break;
+          case 'top-left':
+            newWidth = Math.max(720, startWidth - deltaX);
+            newHeight = Math.max(400, startHeight - deltaY);
+            break;
+          case 'top-right':
+            newWidth = Math.max(720, startWidth + deltaX);
+            newHeight = Math.max(400, startHeight - deltaY);
+            break;
+          case 'bottom-left':
+            newWidth = Math.max(720, startWidth - deltaX);
+            newHeight = Math.max(400, startHeight + deltaY);
+            break;
+          case 'bottom-right':
+            newWidth = Math.max(720, startWidth + deltaX);
+            newHeight = Math.max(400, startHeight + deltaY);
+            break;
+        }
+        
+        // Ограничиваем максимальные размеры
+        newWidth = Math.min(999999, newWidth);
+        newHeight = Math.min(99999, newHeight);
+        
+        setNodeSize({ width: newWidth, height: newHeight });
+      };
+      
+      const handleMouseUp = () => {
+        setIsResizing(false);
+        document.body.style.cursor = '';
+        
+        // Обновляем данные узла
+        if (data.onResize) {
+          data.onResize(id, nodeSize.width, nodeSize.height);
+        }
+        
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+      
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    };
+    
+    const getCursor = (direction) => {
+      switch (direction) {
+        case 'top-left':
+        case 'bottom-right':
+          return 'nwse-resize';
+        case 'top-right':
+        case 'bottom-left':
+          return 'nesw-resize';
+        case 'top':
+        case 'bottom':
+          return 'ns-resize';
+        case 'left':
+        case 'right':
+          return 'ew-resize';
+        default:
+          return 'default';
+      }
+    };
 
     return (
       <>
@@ -339,100 +470,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     );
   };
 
-  const startResize = (e, direction) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startWidth = nodeSize.width;
-    const startHeight = nodeSize.height;
-    
-    setIsResizing(true);
-    document.body.style.cursor = getCursor(direction);
-    
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-      
-      let newWidth = startWidth;
-      let newHeight = startHeight;
-      
-      // В зависимости от направления изменяем размеры
-      switch (direction) {
-        case 'right':
-          newWidth = Math.max(300, startWidth + deltaX);
-          break;
-        case 'left':
-          newWidth = Math.max(300, startWidth - deltaX);
-          break;
-        case 'bottom':
-          newHeight = Math.max(200, startHeight + deltaY);
-          break;
-        case 'top':
-          newHeight = Math.max(200, startHeight - deltaY);
-          break;
-        case 'top-left':
-          newWidth = Math.max(300, startWidth - deltaX);
-          newHeight = Math.max(200, startHeight - deltaY);
-          break;
-        case 'top-right':
-          newWidth = Math.max(300, startWidth + deltaX);
-          newHeight = Math.max(200, startHeight - deltaY);
-          break;
-        case 'bottom-left':
-          newWidth = Math.max(300, startWidth - deltaX);
-          newHeight = Math.max(200, startHeight + deltaY);
-          break;
-        case 'bottom-right':
-          newWidth = Math.max(300, startWidth + deltaX);
-          newHeight = Math.max(200, startHeight + deltaY);
-          break;
-      }
-      
-      // Ограничиваем максимальные размеры
-      newWidth = Math.min(999999, newWidth);
-      newHeight = Math.min(99999, newHeight);
-      
-      setNodeSize({ width: newWidth, height: newHeight });
-    };
-    
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.body.style.cursor = '';
-      
-      // Обновляем данные узла
-      if (data.onResize) {
-        data.onResize(id, nodeSize.width, nodeSize.height);
-      }
-      
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-  
-  const getCursor = (direction) => {
-    switch (direction) {
-      case 'top-left':
-      case 'bottom-right':
-        return 'nwse-resize';
-      case 'top-right':
-      case 'bottom-left':
-        return 'nesw-resize';
-      case 'top':
-      case 'bottom':
-        return 'ns-resize';
-      case 'left':
-      case 'right':
-        return 'ew-resize';
-      default:
-        return 'default';
-    }
-  };
-
   // Конфигурация графика
   const chartColors = {
     backgroundColor: '#1e1e1e',
@@ -453,12 +490,15 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       style={{ 
         width: nodeSize.width,
         height: nodeSize.height,
-        minWidth: 300,
-        minHeight: 200,
+        minWidth: 720,
+        minHeight: 400,
         position: 'relative',
         cursor: isResizing ? getCursor('bottom-right') : 'default'
       }}
       onContextMenu={handleContextMenu}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseMove={handleMouseMove}
     >
       {/* Квадратные ручки для ресайза */}
       <CustomResizer />
@@ -504,14 +544,40 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       </div>
       
 
-      <div className="chart-node-content">
+      <div 
+        className="chart-node-content"
+        ref={chartWrapperRef}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+        style={{ 
+          cursor: 'default',
+          userSelect: 'none'
+        }}
+      >
         {Chart && (
-          <Chart 
-            activeGraphUpdate={activeGraphUpdate}
-            chartData={chartData} //данные 
-            width={nodeSize.width}
-            height={nodeSize.height - 60}
-          />
+          <div
+            onMouseEnter={() => {
+              // Prevent ReactFlow panning when mouse enters chart area
+              if (chartWrapperRef.current) {
+                chartWrapperRef.current.style.cursor = 'default';
+              }
+            }}
+            onMouseLeave={() => {
+              // Reset cursor when leaving chart area
+              if (chartWrapperRef.current) {
+                chartWrapperRef.current.style.cursor = '';
+              }
+            }}
+          >
+            <Chart 
+              activeGraphUpdate={activeGraphUpdate}
+              chartData={chartData}
+              width={nodeSize.width}
+              height={nodeSize.height - 60}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -736,7 +802,6 @@ const Graph = () => {
           return node;
         })
       );
-      console.log(`Данные обновлены для узла ${nodeId}:`, data.length, 'точек');
       //console.log(data)
     };
     
@@ -832,8 +897,8 @@ const Graph = () => {
         type: 'source',
         icon: 'bi-database',
         dataType: 'Случайные данные',
-        width: 300,
-        height: 200,
+        minHeight: 720,
+        minWidth: 400,
         onDataGenerate: (data) => {
           // Найти связанные узлы графика и обновить их данные
           const connectedNodes = edges
@@ -861,8 +926,8 @@ const Graph = () => {
         }
       },
       style: { 
-        width: 300, 
-        height: 200 
+        minHeight: 720,
+        minWidth: 400, 
       }
     };
     
@@ -884,16 +949,16 @@ const Graph = () => {
         label: `Обработчик ${nodeCounter}`,
         description: 'Обрабатывает данные',
         icon: 'bi-gear',
-        width: 300,
-        height: 200,
+        minHeight: 720,
+        minWidth: 400,
         parameters: {
           тип: 'стандартный',
           режим: 'авто'
         }
       },
       style: { 
-        width: 300, 
-        height: 200 
+        minHeight: 720,
+        minWidth: 400,
       }
     };
     
