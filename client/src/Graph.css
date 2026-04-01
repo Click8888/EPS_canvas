@@ -28,12 +28,20 @@
 }
 
 .chart-node-header {
-  background-color: #1e1e1e;
-  padding: 10px 15px;
+  padding: 4px 8px;
+  background-color: #2d2d2d;
   border-bottom: 1px solid #444;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  height: 40px; /* Фиксированная высота заголовка */
+}
+
+.chart-node-header:active {
+  cursor: grabbing;
 }
 
 .chart-node-title {
@@ -48,6 +56,7 @@
   flex: 1;
   position: relative;
   overflow: hidden;
+  cursor: crosshair;
 }
 
 .chart-node-footer {
@@ -580,86 +589,6 @@
   pointer-events: none;
 }
 
-.resize-handle-square {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  background-color: #ff002b;
-  border: 2px solid #1e1e1e;
-  border-radius: 2px;
-  transition: all 0.2s ease;
-  z-index: 1000;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.react-flow__node.selected .resize-handle-square {
-  opacity: 1;
-  pointer-events: all;
-}
-
-.resize-handle-square:hover {
-  background-color: #2d8cff;
-  transform: scale(1.2);
-  box-shadow: 0 0 8px rgba(77, 171, 247, 0.8);
-}
-
-/* Позиционирование квадратных ручек */
-
-/* Угловые ручки */
-.resize-handle-square.top-left {
-  top: -6px;
-  left: -6px;
-  cursor: nw-resize;
-}
-
-.resize-handle-square.top-right {
-  top: -6px;
-  right: -6px;
-  cursor: ne-resize;
-}
-
-.resize-handle-square.bottom-left {
-  bottom: -6px;
-  left: -6px;
-  cursor: sw-resize;
-}
-
-.resize-handle-square.bottom-right {
-  bottom: -6px;
-  right: -6px;
-  cursor: se-resize;
-}
-
-/* Боковые ручки */
-.resize-handle-square.top {
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  cursor: n-resize;
-}
-
-.resize-handle-square.right {
-  top: 50%;
-  right: -6px;
-  transform: translateY(-50%);
-  cursor: e-resize;
-}
-
-.resize-handle-square.bottom {
-  bottom: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  cursor: s-resize;
-}
-
-.resize-handle-square.left {
-  top: 50%;
-  left: -6px;
-  transform: translateY(-50%);
-  cursor: w-resize;
-}
-
 /* Индикатор во время ресайза */
 .resize-indicator {
   background: rgba(0, 0, 0, 0.7);
@@ -795,16 +724,7 @@
   transition: none; /* Убираем анимацию для плавного ресайза */
 }
 
-.chart-node-header {
-  padding: 4px 8px;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #444;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-  height: 40px; /* Фиксированная высота заголовка */
-}
+
 
 .chart-node-content {
   flex: 1;
@@ -822,8 +742,9 @@
   background-color: #4dabf7;
   border: 2px solid #ffffff;
   border-radius: 2px;
-  z-index: 1000;
   opacity: 0.9;
+  z-index: 10;
+  cursor: inherit; /* берёт cursor из startResize */
   box-shadow: 0 0 4px rgba(0,0,0,0.3);
 }
 
@@ -891,3 +812,12 @@
   margin-left: 10px;
 }
 
+.absolute-time-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background-color: rgba(255, 193, 7, 0.2);
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  border-radius: 3px;
+  font-size: 11px;
+  color: #ffc107;
+}

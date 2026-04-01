@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, getCursor, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import ReactFlow, {
   
   MiniMap,
@@ -16,6 +16,20 @@ import 'reactflow/dist/style.css';
 import './Graph.css';
 import Sidebar from './components/Sidebar';
 import Chart from './components/Chart';
+
+const getCursor = (direction) => {
+  switch (direction) {
+    case 'top-left':
+    case 'bottom-right': return 'nwse-resize';
+    case 'top-right':
+    case 'bottom-left': return 'nesw-resize';
+    case 'top':
+    case 'bottom':      return 'ns-resize';
+    case 'left':
+    case 'right':       return 'ew-resize';
+    default:            return 'default';
+  }
+};
 
 // Кастомный узел для графика
 const ChartNode = ({ data, isConnectable, selected, id }) => {
@@ -40,6 +54,9 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const updateIntervalRef = useRef(null);
   const settingsPanelRef = useRef(null);
   const chartWrapperRef = useRef(null);
+  const autoScaleRef = useRef(null);
+  const resetChartRef = useRef(null);
+  const [absoluteStartTime, setAbsoluteStartTime] = useState(null);
   
   // Flag to track if we're interacting with the chart
   const isChartInteractionRef = useRef(false);
@@ -389,25 +406,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     };
-    
-    const getCursor = (direction) => {
-      switch (direction) {
-        case 'top-left':
-        case 'bottom-right':
-          return 'nwse-resize';
-        case 'top-right':
-        case 'bottom-left':
-          return 'nesw-resize';
-        case 'top':
-        case 'bottom':
-          return 'ns-resize';
-        case 'left':
-        case 'right':
-          return 'ew-resize';
-        default:
-          return 'default';
-      }
-    };
 
     return (
       <>
@@ -496,9 +494,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
         cursor: isResizing ? getCursor('bottom-right') : 'default'
       }}
       onContextMenu={handleContextMenu}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onMouseMove={handleMouseMove}
     >
       {/* Квадратные ручки для ресайза */}
       <CustomResizer />
@@ -522,6 +517,12 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               </span>
             )}
           </span>
+          {absoluteStartTime && (
+            <span className="absolute-time-badge ms-1" title="Абсолютное время первой точки">
+              <i className="bi bi-clock me-1"></i>
+              Начало: {absoluteStartTime}
+            </span>
+          )}
           <span className="resize-indicator">
             Размер: {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
           </span>
@@ -540,21 +541,43 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
+          {/* Кнопка автомасштабирования */}
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={() => autoScaleRef.current?.()}
+            disabled={!chartData || chartData.length === 0}
+            title="Автомасштабирование графика под все данные"
+          >
+            <i className="bi bi-arrows-angle-expand"></i>
+          </button>
+
+          {/* Кнопка сброса графика */}
+          <button
+            className="btn btn-sm btn-outline-danger"
+            onClick={() => {
+              if (window.confirm('Сбросить график и очистить все данные?')) {
+                resetChartRef.current?.();
+                setChartData([]);
+                setAbsoluteStartTime(null);
+              }
+            }}
+            disabled={!chartData || chartData.length === 0}
+            title="Сбросить график и очистить данные"
+          >
+            <i className="bi bi-arrow-counterclockwise"></i>
+          </button>
         </div>
       </div>
       
 
       <div 
-        className="chart-node-content"
+        className="chart-node-content nodrag"
         ref={chartWrapperRef}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         onWheel={handleWheel}
-        style={{ 
-          cursor: 'default',
-          userSelect: 'none'
-        }}
+        style={{ cursor: 'crosshair', userSelect: 'none' }}
       >
         {Chart && (
           <div
@@ -576,6 +599,15 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               chartData={chartData}
               width={nodeSize.width}
               height={nodeSize.height - 60}
+              onAutoScaleReady={(autoScaleFn) => {
+                autoScaleRef.current = autoScaleFn;
+              }}
+              onResetReady={(resetFn) => {
+                resetChartRef.current = resetFn;
+              }}
+              onAbsoluteTimeUpdate={(absTime) => {
+                setAbsoluteStartTime(absTime);
+              }}
             />
           </div>
         )}
@@ -861,6 +893,7 @@ const Graph = () => {
     const newNode = {
       id: newNodeId,
       type: 'chartNode',
+      dragHandle: '.chart-node-header',
       position: { 
         x: Math.random() * 500 + 100, 
         y: Math.random() * 300 + 50 
@@ -887,6 +920,7 @@ const Graph = () => {
     const newNode = {
       id: newNodeId,
       type: 'dataSourceNode',
+      dragHandle: '.chart-node-header',
       position: { 
         x: Math.random() * 200 + 50, 
         y: Math.random() * 300 + 50 
@@ -941,6 +975,7 @@ const Graph = () => {
     const newNode = {
       id: newNodeId,
       type: 'processorNode',
+      dragHandle: '.chart-node-header',
       position: { 
         x: Math.random() * 300 + 150, 
         y: Math.random() * 300 + 50 

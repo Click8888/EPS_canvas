@@ -64,6 +64,10 @@ func main() {
         api.POST("/updaterow", routes.UpdateRow)
         api.POST("/downldata", routes.DownloadData)
         api.POST("/sqlquery", routes.SqlQuery)
+
+        //Подключение к БД
+        api.POST("/connect", routes.ConnectDB)
+        api.GET("/connection-status", routes.GetConnectionStatus)
     }
 
     // Выведите все зарегистрированные маршруты
