@@ -812,12 +812,3 @@
   margin-left: 10px;
 }
 
-.absolute-time-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  background-color: rgba(255, 193, 7, 0.2);
-  border: 1px solid rgba(255, 193, 7, 0.5);
-  border-radius: 3px;
-  font-size: 11px;
-  color: #ffc107;
-}

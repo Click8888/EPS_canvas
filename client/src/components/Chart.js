@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
 import {
   TitleComponent,
@@ -83,34 +83,6 @@ const formatTime = (timeValue) => {
   return String(timeValue);
 };
 
-// Функция для форматирования относительного времени (от 0:00:00.000)
-const formatRelativeTime = (timeValue, referenceTime) => {
-  if (timeValue === undefined || timeValue === null) return '';
-  if (referenceTime === null) return '0:00:00.000';
-  
-  // Вычисляем относительное время в секундах
-  const relativeSeconds = timeValue - referenceTime;
-  
-  // Если относительное время отрицательное, показываем 0
-  if (relativeSeconds < 0) return '0:00:00.000';
-  
-  const hours = Math.floor(relativeSeconds / 3600);
-  const minutes = Math.floor((relativeSeconds % 3600) / 60);
-  const seconds = Math.floor(relativeSeconds % 60);
-  const milliseconds = Math.floor((relativeSeconds % 1) * 1000);
-  
-  // Всегда показываем формат с часами
-  return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
-};
-
-// Функция для получения абсолютного времени в читаемом формате
-const getAbsoluteTimeString = (timeValue) => {
-  if (timeValue === undefined || timeValue === null) return '';
-  
-  // Используем существующую функцию formatTime для абсолютного времени
-  return formatTime(timeValue);
-};
-
 // Функция для преобразования времени в секунды (для числовой оси)
 const convertTimeToSeconds = (timeValue) => {
   if (typeof timeValue === 'number' && timeValue < 1000000000) {
@@ -140,7 +112,7 @@ const convertTimeToSeconds = (timeValue) => {
 };
 
 const defaultOption = {
-  animation: false,
+  animation: true,
   tooltip: {
     trigger: 'axis',
     axisPointer: { type: 'cross' },
@@ -152,59 +124,62 @@ const defaultOption = {
       return `Время: ${formattedTime}<br/>Значение: ${value}`;
     }
   },
+  // Добавляем настройки для axisPointer на осях
   axisPointer: {
     link: { xAxisIndex: 'all' },
     label: {
       formatter: function(params) {
+        // params.value - это значение на оси X в секундах
         return formatTime(params.value);
       }
     }
   },
-  grid: {
-    top: 40,
-    left: 50,
-    right: 40,
-    bottom: 50
-  },
   xAxis: {
-    name: 'время',
     type: 'value',
     nameLocation: 'middle',
     nameGap: 35,
-    min: 0,
-    max: 100,
     axisLabel: {
       formatter: function(value) {
         return formatTime(value);
       },
-      rotate: 0
+      rotate: 0,
+      interval: 1
     },
-    minorTick: {
-      show: true
-    },
-    minorSplitLine: {
-      show: true
-    },
+    minInterval: 1,
     splitLine: {
-      show: true
+      show: false //Линии от оси
     },
     axisTick: {
       show: true
+    },
+    axisLine: {
+      show: true,
+      onZero: true, // Ось будет проходить через 0
+      lineStyle: {
+        color: '#888',
+        width: 2 // Жирная линия
+      }
     }
   },
   yAxis: {
-    name: 'значение',
     type: 'value',
-    min: 0,
-    max: 100,
+    scale: false, // Отключаем автомасштабирование, чтобы 0 всегда был виден
     minorTick: {
       show: true
     },
-    minorSplitLine: {
-      show: false
-    },
     splitLine: {
-      show: false
+      show: true, //Линии от оси
+      lineStyle: {
+        color: '#444' // Цвет обычных линий сетки
+      }
+    },
+    axisLine: {
+      show: true,
+      onZero: true, // Ось X будет проходить через Y = 0
+      lineStyle: {
+        color: '#888',
+        width: 2 // Жирная линия для оси
+      }
     }
   },
   dataZoom: [
@@ -212,13 +187,13 @@ const defaultOption = {
       show: true,
       type: 'inside',
       filterMode: 'none',
-      xAxisIndex: [0]
+      xAxisIndex: [0],
     },
     {
       show: true,
       type: 'inside',
       filterMode: 'none',
-      yAxisIndex: [0]
+      yAxisIndex: [0],
     }
   ],
   series: [
@@ -232,7 +207,14 @@ const defaultOption = {
       },
       data: []
     }
-  ]
+  ],
+  grid: {
+    left: '3%',
+    right: '4%',
+    bottom: '5%',
+    top: '10%',
+    containLabel: true
+  }
 };
 
 const Chart = ({ 
@@ -240,234 +222,27 @@ const Chart = ({
   chartData, 
   width = '100%', 
   height = '600px',
-  onAutoScaleReady,
-  onResetReady,
-  onAbsoluteTimeUpdate  // Новый prop для передачи абсолютного времени
 }) => {
   const chartRef = useRef(null);
   const [option, setOption] = useState(defaultOption);
   const [chartInstance, setChartInstance] = useState(null);
-  const [axesInitialized, setAxesInitialized] = useState(false);
-const [axisBounds, setAxisBounds] = useState({
-  minX: 0,
-  maxX: 100,
-  minY: 0,
-  maxY: 100
-});
-const [referenceTime, setReferenceTime] = useState(null);
-const [absoluteStartTime, setAbsoluteStartTime] = useState(null); // Для отображения абсолютного времени
-
-  const checkAndExpandBounds = useCallback((formattedData) => {
-  if (formattedData.time.length === 0 || formattedData.values.length === 0) {
-    return axisBounds;
-  }
-
-  const dataMinX = Math.min(...formattedData.time);
-  const dataMaxX = Math.max(...formattedData.time);
-  const dataMinY = Math.min(...formattedData.values);
-  const dataMaxY = Math.max(...formattedData.values);
-
-  let needsUpdate = false;
-  let newBounds = { ...axisBounds };
-
-  // Проверяем выход за границы по X
-  if (dataMinX < axisBounds.minX || dataMaxX > axisBounds.maxX) {
-    const currentRangeX = axisBounds.maxX - axisBounds.minX;
-    const centerX = (axisBounds.minX + axisBounds.maxX) / 2;
-    const newRangeX = currentRangeX * 2; // Удваиваем диапазон
-    newBounds.minX = centerX - newRangeX / 2;
-    newBounds.maxX = centerX + newRangeX / 2;
-    needsUpdate = true;
-  }
-
-  // Проверяем выход за границы по Y
-  if (dataMinY < axisBounds.minY || dataMaxY > axisBounds.maxY) {
-    const currentRangeY = axisBounds.maxY - axisBounds.minY;
-    const centerY = (axisBounds.minY + axisBounds.maxY) / 2;
-    const newRangeY = currentRangeY * 2; // Удваиваем диапазон
-    newBounds.minY = centerY - newRangeY / 2;
-    newBounds.maxY = centerY + newRangeY / 2;
-    needsUpdate = true;
-  }
-
-  return needsUpdate ? newBounds : null;
-}, [axisBounds]);
-
-
-const autoScale = useCallback(() => {
-  if (!chartInstance || !chartData || chartData.length === 0 || referenceTime === null) return;
-
-  const formattedData = formatDataForECharts(chartData);
   
-  if (formattedData.time.length === 0 || formattedData.values.length === 0) return;
-
-  const minTime = Math.min(...formattedData.time);
-  const maxTime = Math.max(...formattedData.time);
-  const minValue = Math.min(...formattedData.values);
-  const maxValue = Math.max(...formattedData.values);
-
-  const timeRange = maxTime - minTime || 1;
-  const valueRange = maxValue - minValue || 1;
-
-  // Границы в АБСОЛЮТНЫХ значениях
-  const newBounds = {
-    minX: minTime,
-    maxX: maxTime + timeRange * 0.05,
-    minY: minValue - valueRange * 0.1,
-    maxY: maxValue + valueRange * 0.1
-  };
-
-  setAxisBounds(newBounds);
-
-  // НЕ ОБНОВЛЯЕМ referenceTime - он остается неизменным!
-  // Обновляем только границы осей в ОТНОСИТЕЛЬНЫХ координатах
-  chartInstance.setOption({
-    xAxis: { 
-      min: newBounds.minX - referenceTime,  // ОТНОСИТЕЛЬНОЕ
-      max: newBounds.maxX - referenceTime   // ОТНОСИТЕЛЬНОЕ
-    },
-    yAxis: { 
-      min: newBounds.minY, 
-      max: newBounds.maxY 
-    }
-  }, { notMerge: false });
-
-}, [chartInstance, chartData, referenceTime]);
-
-// Функция для создания опций графика с учетом referenceTime
-const createChartOption = useCallback((refTime) => {
-  return {
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' },
-      formatter: function(params) {
-        if (!params || params.length === 0) return '';
-        const timeValue = params[0].value[0];
-        const relativeTime = formatRelativeTime(timeValue, refTime);
-        const value = params[0].value[1];
-        
-        // Показываем и относительное, и абсолютное время
-        let tooltipText = `Относительное время: ${relativeTime}<br/>`;
-        if (refTime !== null) {
-          const absoluteTime = getAbsoluteTimeString(timeValue);
-          tooltipText += `Абсолютное время: ${absoluteTime}<br/>`;
-        }
-        tooltipText += `Значение: ${value}`;
-        
-        return tooltipText;
-      }
-    },
-    axisPointer: {
-      link: { xAxisIndex: 'all' },
-      label: {
-        formatter: function(params) {
-          return formatRelativeTime(params.value, refTime);
-        }
-      }
-    },
-    grid: {
-      top: 40,
-      left: 50,
-      right: 40,
-      bottom: 50
-    },
-    xAxis: {
-      name: 'время (относительное)',
-      type: 'value',
-      nameLocation: 'middle',
-      nameGap: 35,
-      min: 0,
-      max: 100,
-      axisLabel: {
-        formatter: function(value) {
-          return formatRelativeTime(value, refTime);
-        },
-        rotate: 0
-      },
-      minorTick: {
-        show: true
-      },
-      minorSplitLine: {
-        show: true
-      },
-      splitLine: {
-        show: true
-      },
-      axisTick: {
-        show: true
-      }
-    },
-    yAxis: {
-      name: 'значение',
-      type: 'value',
-      min: 0,
-      max: 100,
-      minorTick: {
-        show: true
-      },
-      minorSplitLine: {
-        show: true
-      },
-      splitLine: {
-        show: true
-      }
-    },
-    dataZoom: [
-      {
-        show: true,
-        type: 'inside',
-        filterMode: 'none',
-        xAxisIndex: [0]
-      },
-      {
-        show: true,
-        type: 'inside',
-        filterMode: 'none',
-        yAxisIndex: [0]
-      }
-    ],
-    series: [
-      {
-        name: 'Данные',
-        type: 'line',
-        showSymbol: false,
-        clip: true,
-        itemStyle: {
-          color: '#4dabf7'
-        },
-        data: []
-      }
-    ]
-  };
-}, []);
-
-// Функция для полного сброса графика
-const resetChart = useCallback(() => {
-  setReferenceTime(null);
-  setAbsoluteStartTime(null);
-  setAxesInitialized(false);
-  setAxisBounds({
-    minX: 0,
-    maxX: 100,
-    minY: 0,
-    maxY: 100
-  });
+  // Состояние для отслеживания взаимодействия пользователя с графиком
+  const [userInteracting, setUserInteracting] = useState(false);
+  const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
   
-  if (chartInstance) {
-    const defaultChartOption = createChartOption(null);
-    chartInstance.setOption(defaultChartOption, { notMerge: true });
-  }
-}, [chartInstance, createChartOption]);
 
   // Преобразуем данные в формат, понятный ECharts
   const formatDataForECharts = (data) => {
     if (!data || !Array.isArray(data)) return { time: [], values: [] };
 
+    // Ограничиваем отображение до последних 200 точек
+    const limitedData = data.length > 200 ? data.slice(-200) : data;
+
     const time = [];
     const values = [];
 
-    data.forEach(item => {
+    limitedData.forEach(item => {
       if (item && typeof item === 'object') {
         let timeValue;
         
@@ -494,37 +269,6 @@ const resetChart = useCallback(() => {
     return { time, values };
   };
 
-  
-
-// Передаем функции родительскому компоненту
-useEffect(() => {
-  if (onAutoScaleReady && autoScale) {
-    onAutoScaleReady(autoScale);
-  }
-}, [onAutoScaleReady, autoScale]);
-
-useEffect(() => {
-  if (onResetReady && resetChart) {
-    onResetReady(resetChart);
-  }
-}, [onResetReady, resetChart]);
-
-// Передаем абсолютное время первой точки родителю
-useEffect(() => {
-  if (onAbsoluteTimeUpdate && absoluteStartTime) {
-    onAbsoluteTimeUpdate(absoluteStartTime);
-  }
-}, [onAbsoluteTimeUpdate, absoluteStartTime]);
-
-// Обновление опций графика при изменении referenceTime
-useEffect(() => {
-  if (!chartInstance) return;
-
-  const chartOption = createChartOption(referenceTime);
-  
-  chartInstance.setOption(chartOption, { notMerge: false });
-}, [chartInstance, referenceTime, createChartOption]);
-
   // Инициализация экземпляра графика
   useEffect(() => {
     if (chartRef.current && !chartInstance) {
@@ -541,109 +285,116 @@ useEffect(() => {
     };
   }, [chartInstance]);
 
+  // Начальная настройка графика
+  useEffect(() => {
+    if (!chartInstance) return;
+    
+    // Устанавливаем начальную конфигурацию графика
+    chartInstance.setOption(defaultOption, true);
+  }, [chartInstance]);
 
-  // Инициализация границ осей при первой загрузке данных
-useEffect(() => {
-  if (!chartInstance || axesInitialized || !chartData || chartData.length === 0) return;
+  // Отслеживание взаимодействия пользователя с графиком
+  useEffect(() => {
+    if (!chartInstance) return;
 
-  const formattedData = formatDataForECharts(chartData);
-  
-  if (formattedData.time.length === 0 || formattedData.values.length === 0) return;
+    // Обработчик события dataZoom (когда пользователь масштабирует или двигает график)
+    const handleDataZoom = (params) => {
+      // Проверяем, что событие вызвано пользователем, а не программно
+      if (params.batch && params.batch.length > 0) {
+        const isUserAction = params.batch[0].start !== undefined || params.batch[0].end !== undefined;
+        if (isUserAction) {
+          userInteractingRef.current = true;
+          setUserInteracting(true);
+        }
+      }
+    };
 
-  // Устанавливаем базовое время как время первой точки (ОДИН РАЗ)
-  const firstTime = Math.min(...formattedData.time);
-  setReferenceTime(firstTime);
-  
-  // Сохраняем абсолютное время первой точки для отображения
-  const absoluteTime = getAbsoluteTimeString(firstTime);
-  setAbsoluteStartTime(absoluteTime);
+    // Обработчик события restore (когда пользователь сбрасывает zoom)
+    const handleRestore = () => {
+      userInteractingRef.current = false;
+      setUserInteracting(false);
+    };
 
-  const minTime = Math.min(...formattedData.time);
-  const maxTime = Math.max(...formattedData.time);
-  const minValue = Math.min(...formattedData.values);
-  const maxValue = Math.max(...formattedData.values);
+    // Подписываемся на события
+    chartInstance.on('dataZoom', handleDataZoom);
+    chartInstance.on('restore', handleRestore);
 
-  const timeRange = maxTime - minTime || 1;
-  const valueRange = maxValue - minValue || 1;
+    // Отписываемся при размонтировании
+    return () => {
+      chartInstance.off('dataZoom', handleDataZoom);
+      chartInstance.off('restore', handleRestore);
+    };
+  }, [chartInstance]);
 
-  // Границы осей в АБСОЛЮТНЫХ значениях (не относительных)
-  const newBounds = {
-    minX: minTime,  // Начинаем от первой точки (абсолютное значение)
-    maxX: maxTime + timeRange * 0.05,
-    minY: minValue - valueRange * 0.1,
-    maxY: maxValue + valueRange * 0.1
-  };
+  // Обновление данных графика
+  useEffect(() => {
+    if (!chartInstance || !chartData) return;
 
-  setAxisBounds(newBounds);
-
-  // Создаем опции графика с referenceTime
-  const chartOption = createChartOption(firstTime);
-  
-  chartInstance.setOption({
-    ...chartOption,
-    xAxis: { 
-      ...chartOption.xAxis,
-      min: minTime - firstTime,  // ОТНОСИТЕЛЬНОЕ значение для оси
-      max: (maxTime + timeRange * 0.05) - firstTime  // ОТНОСИТЕЛЬНОЕ значение
-    },
-    yAxis: { 
-      min: newBounds.minY, 
-      max: newBounds.maxY 
+    const formattedData = formatDataForECharts(chartData);
+    
+    // Проверяем, взаимодействует ли пользователь с графиком
+    if (userInteractingRef.current) {
+      // РЕЖИМ 1: Пользователь взаимодействует - обновляем ТОЛЬКО данные
+      const updateOption = {
+        series: [
+          {
+            data: formattedData.values.map((value, index) => [formattedData.time[index], value])
+          }
+        ]
+      };
+      
+      // notMerge: false сохраняет состояние zoom/pan
+      chartInstance.setOption(updateOption, false);
+      
+    } else {
+      // РЕЖИМ 2: Пользователь НЕ взаимодействует - обновляем данные И оси
+      const newOption = {
+        xAxis: {
+          ...defaultOption.xAxis,
+          data: formattedData.time,
+          min: function(value) {
+            const range = value.max - value.min;
+            return value.min - range * 0.1; // 10% отступ слева
+          },
+          max: function(value) {
+            const range = value.max - value.min;
+            return value.max + range * 0.1; // 10% отступ справа
+          },
+          axisLabel: {
+            ...defaultOption.xAxis.axisLabel,
+            interval: 1
+          }
+        },
+        yAxis: {
+          ...defaultOption.yAxis,
+          min: function(value) {
+            const range = value.max - value.min;
+            const minWithPadding = value.min - range * 0.1;
+            return Math.min(minWithPadding, 0);
+          },
+          max: function(value) {
+            const range = value.max - value.min;
+            const maxWithPadding = value.max + range * 0.1;
+            return Math.max(maxWithPadding, 0);
+          }
+        },
+        series: [
+          {
+            ...defaultOption.series[0],
+            data: formattedData.values.map((value, index) => [formattedData.time[index], value]),
+            name: 'Точка'
+          }
+        ]
+      };
+      
+      // Обновляем состояние option для ReactECharts
+      setOption(newOption);
+      
+      // notMerge: false для плавного обновления
+      chartInstance.setOption(newOption, false);
     }
-  }, { notMerge: false });
 
-  setAxesInitialized(true);
-}, [chartInstance, chartData, axesInitialized, createChartOption]);
-
-// Проверка и расширение границ осей при выходе данных за пределы
-useEffect(() => {
-  if (!chartInstance || !axesInitialized || !chartData || chartData.length === 0 || referenceTime === null) return;
-
-  const formattedData = formatDataForECharts(chartData);
-  const newBounds = checkAndExpandBounds(formattedData);
-
-  if (newBounds) {
-    setAxisBounds(newBounds);
-    
-    // Обновляем оси с ОТНОСИТЕЛЬНЫМИ значениями
-    chartInstance.setOption({
-      xAxis: { 
-        min: newBounds.minX - referenceTime,  // ОТНОСИТЕЛЬНОЕ
-        max: newBounds.maxX - referenceTime   // ОТНОСИТЕЛЬНОЕ
-      },
-      yAxis: { 
-        min: newBounds.minY, 
-        max: newBounds.maxY 
-      }
-    }, { notMerge: false });
-  }
-}, [chartInstance, chartData, axesInitialized, checkAndExpandBounds, referenceTime]);
-
-// Обновление только данных серии (без изменения осей)
-useEffect(() => {
-  if (!chartInstance || referenceTime === null) return;
-
-  const formattedData = formatDataForECharts(chartData || []);
-
-  // Преобразуем данные в относительные координаты
-  const relativeData = formattedData.values.map((value, index) => [
-    formattedData.time[index] - referenceTime,  // ОТНОСИТЕЛЬНОЕ время
-    value
-  ]);
-
-  chartInstance.setOption({
-    series: [
-      {
-        data: relativeData
-      }
-    ]
-  }, { 
-    notMerge: false,
-    replaceMerge: ['series']
-  });
-
-}, [chartInstance, chartData, referenceTime]);
-    
+  }, [chartData, activeGraphUpdate, chartInstance]);
 
   return (
     <div
@@ -651,6 +402,7 @@ useEffect(() => {
       style={{ 
         width: width, 
         height: height,
+        position: 'relative'
       }}
     >
       <ReactECharts
@@ -666,6 +418,40 @@ useEffect(() => {
       }}
         opts={{ renderer: 'canvas' }}
       />
+      
+      {/* Кнопка сброса zoom - показывается только когда пользователь взаимодействовал */}
+      {userInteracting && (
+        <button
+          onClick={() => {
+            if (chartInstance) {
+              // Сбрасываем zoom и возвращаемся к автоматическому режиму
+              chartInstance.dispatchAction({ type: 'restore' });
+              userInteractingRef.current = false;
+              setUserInteracting(false);
+            }
+          }}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            padding: '8px 16px',
+            backgroundColor: '#4dabf7',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: '500',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            zIndex: 1000,
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#339af0'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#4dabf7'}
+        >
+          Сбросить масштаб
+        </button>
+      )}
     </div>
   );
 };

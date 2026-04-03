@@ -54,9 +54,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const updateIntervalRef = useRef(null);
   const settingsPanelRef = useRef(null);
   const chartWrapperRef = useRef(null);
-  const autoScaleRef = useRef(null);
-  const resetChartRef = useRef(null);
-  const [absoluteStartTime, setAbsoluteStartTime] = useState(null);
   
   // Flag to track if we're interacting with the chart
   const isChartInteractionRef = useRef(false);
@@ -517,12 +514,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               </span>
             )}
           </span>
-          {absoluteStartTime && (
-            <span className="absolute-time-badge ms-1" title="Абсолютное время первой точки">
-              <i className="bi bi-clock me-1"></i>
-              Начало: {absoluteStartTime}
-            </span>
-          )}
           <span className="resize-indicator">
             Размер: {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
           </span>
@@ -540,31 +531,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               "Сначала выберите источник данных"}
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
-          </button>
-          {/* Кнопка автомасштабирования */}
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            onClick={() => autoScaleRef.current?.()}
-            disabled={!chartData || chartData.length === 0}
-            title="Автомасштабирование графика под все данные"
-          >
-            <i className="bi bi-arrows-angle-expand"></i>
-          </button>
-
-          {/* Кнопка сброса графика */}
-          <button
-            className="btn btn-sm btn-outline-danger"
-            onClick={() => {
-              if (window.confirm('Сбросить график и очистить все данные?')) {
-                resetChartRef.current?.();
-                setChartData([]);
-                setAbsoluteStartTime(null);
-              }
-            }}
-            disabled={!chartData || chartData.length === 0}
-            title="Сбросить график и очистить данные"
-          >
-            <i className="bi bi-arrow-counterclockwise"></i>
           </button>
         </div>
       </div>
@@ -599,15 +565,6 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               chartData={chartData}
               width={nodeSize.width}
               height={nodeSize.height - 60}
-              onAutoScaleReady={(autoScaleFn) => {
-                autoScaleRef.current = autoScaleFn;
-              }}
-              onResetReady={(resetFn) => {
-                resetChartRef.current = resetFn;
-              }}
-              onAbsoluteTimeUpdate={(absTime) => {
-                setAbsoluteStartTime(absTime);
-              }}
             />
           </div>
         )}
