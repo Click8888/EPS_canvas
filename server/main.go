@@ -16,8 +16,8 @@ func main() {
         Host:     "localhost",
         Port:     5432,
         User:     "postgres",
-        Password: "antivzlom",
-        DBName:   "test",
+        Password: "123",
+        DBName:   "pmu",
     }
 
     // Инициализация БД
@@ -52,10 +52,6 @@ func main() {
         api.GET("/metadata", routes.GetDatabaseMetadata)    
         api.POST("/execute-query", routes.HandleSQLQuery)
         
-        // Эндпоинты для управления генерацией данных
-        api.POST("/generation/start", routes.StartGenerationHandler)
-        api.POST("/generation/stop", routes.StopGenerationHandler)
-        api.GET("/generation/status", routes.GenerationStatusHandler)
 
         //Эндпоинты админки
         api.POST("/deltable", routes.DeleteTable)

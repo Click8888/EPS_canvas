@@ -10,42 +10,29 @@ import (
 )
 
 func GetDatabases(c *gin.Context) {
+    var measurements []models.PMUMeasurement
+    if err := database.DB.Find(&measurements).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch measurements"})
+        return
+    }
 
-	// userID := c.MustGet("userID").(uint) // Получаем ID пользователя из middleware
+    // Формируем ответ
+    type MeasurementResponse struct {
+        Time         string  `json:"time"`
+        CurrentValue float64 `json:"current_value"`
+        VoltageValue float64 `json:"voltage_value"`
+    }
 
-	var databases []models.Current_measurements
-	if err := database.DB.Find(&databases).Error; err != nil { //запись данных из БД в переменную databases
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch databases"})
-		return
-	}
+    var result []MeasurementResponse
+    for _, m := range measurements {
+        result = append(result, MeasurementResponse{
+            Time:         m.Time.Format("2006-01-02 15:04:05.000"),
+            CurrentValue: m.CurrentValue,
+            VoltageValue: m.VoltageValue,
+        })
+    }
 
-	// Формируем ответ с дополнительной информацией
-	type Measurements struct {
-		ID               uint
-		Measurement_time string
-		Current_value    float32
-		Voltage_value    float32
-		Circuit_id       string
-		Sensor_model     string
-		Is_overload      bool
-	}
-
-	var result []Measurements
-	for _, db := range databases {
-		// var creator models.User
-		// database.DB.First(&creator, db.ID_creator)
-
-		result = append(result, Measurements{
-			ID:               db.ID,
-			Measurement_time: db.Measurement_time,
-			Current_value:    db.Current_value,
-			Voltage_value:    db.Voltage_value,
-		})
-
-	}
-
-	c.JSON(http.StatusOK, gin.H{"databases": result})
-
+    c.JSON(http.StatusOK, gin.H{"databases": result})
 }
 
 func HandleSQLQuery(c *gin.Context) {
