@@ -237,7 +237,7 @@ const Chart = ({
     if (!data || !Array.isArray(data)) return { time: [], values: [] };
 
     // Ограничиваем отображение до последних 200 точек
-    const limitedData = data.length > 200 ? data.slice(-200) : data;
+    const limitedData = data.length > 300 ? data.slice(-300) : data;
 
     const time = [];
     const values = [];
