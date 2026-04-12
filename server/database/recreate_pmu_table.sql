@@ -1,15 +1,16 @@
--- Создание новой базы данных PMU
-CREATE DATABASE pmu;
+-- Скрипт для пересоздания таблицы pmu_measurements с полем id
 
--- Подключаемся к новой БД
+-- Подключаемся к БД PMU
 \c pmu
 
--- Включаем расширение TimescaleDB
-CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+-- Удаляем политики и агрегаты
+DROP MATERIALIZED VIEW IF EXISTS pmu_measurements_hourly CASCADE;
 
--- Создаём таблицу для измерений PMU
+-- Удаляем старую таблицу
+DROP TABLE IF EXISTS pmu_measurements CASCADE;
+
+-- Создаём таблицу заново с полем id
 CREATE TABLE pmu_measurements (
-    id SERIAL,
     time TIMESTAMPTZ NOT NULL,
     current_value DOUBLE PRECISION,
     voltage_value DOUBLE PRECISION
@@ -20,6 +21,7 @@ SELECT create_hypertable('pmu_measurements', 'time');
 
 -- Создаём индекс для оптимизации запросов по времени
 CREATE INDEX idx_pmu_time ON pmu_measurements (time DESC);
+
 
 -- ОПЦИОНАЛЬНО: Политика сжатия данных старше 7 дней
 ALTER TABLE pmu_measurements SET (
