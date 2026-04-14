@@ -105,9 +105,10 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           // Преобразуем время
           let timeValue;
           if (xValue instanceof Date) {
+            // Если это объект Date из БД, сохраняем как есть
             timeValue = xValue.getTime() / 1000;
           } else if (typeof xValue === 'string') {
-            // Пытаемся разобрать строку времени
+            // Сначала проверяем формат HH:MM:SS.mmm
             const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
             if (timeMatch) {
               const hours = parseInt(timeMatch[1]) || 0;
@@ -116,10 +117,16 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
               timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
             } else {
-              // Пытаемся преобразовать в timestamp
-              const date = new Date(xValue);
-              if (!isNaN(date.getTime())) {
-                timeValue = date.getTime() / 1000;
+
+              const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+              if (fullDateMatch) {
+
+                const date = new Date(xValue);
+                if (!isNaN(date.getTime())) {
+                  timeValue = date.getTime() / 1000;
+                } else {
+                  timeValue = parseFloat(xValue) || index;
+                }
               } else {
                 timeValue = parseFloat(xValue) || index;
               }

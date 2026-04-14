@@ -173,26 +173,36 @@ const Sidebar = ({
         const xValue = row[xAxisColumn];
         
         if (xValue instanceof Date) {
-          timeValue = xValue.getTime() / 1000;
-        } else if (typeof xValue === 'string') {
-          // Пытаемся разобрать строку времени HH:MM:SS.mmm
-          const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
-          if (timeMatch) {
-            const hours = parseInt(timeMatch[1]) || 0;
-            const minutes = parseInt(timeMatch[2]) || 0;
-            const seconds = parseInt(timeMatch[3]) || 0;
-            const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
-            timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-          } else {
-            // Пытаемся преобразовать в число
-            timeValue = parseFloat(xValue) || 0;
-          }
-        } else if (typeof xValue === 'number') {
-          timeValue = xValue;
-        } else {
-          // Используем индекс как время
-          timeValue = index;
-        }
+  timeValue = xValue.getTime() / 1000;
+} else if (typeof xValue === 'string') {
+  // Проверяем формат HH:MM:SS.mmm
+  const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
+  if (timeMatch) {
+    const hours = parseInt(timeMatch[1]) || 0;
+    const minutes = parseInt(timeMatch[2]) || 0;
+    const seconds = parseInt(timeMatch[3]) || 0;
+    const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
+    timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+  } else {
+    // Проверяем, содержит ли строка полную дату
+    const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+    if (fullDateMatch) {
+      const date = new Date(xValue);
+      if (!isNaN(date.getTime())) {
+        timeValue = date.getTime() / 1000;
+      } else {
+        timeValue = parseFloat(xValue) || 0;
+      }
+    } else {
+      // Просто число в виде строки
+      timeValue = parseFloat(xValue) || 0;
+    }
+  }
+} else if (typeof xValue === 'number') {
+  timeValue = xValue;
+} else {
+  timeValue = index;
+}
         
         return {
           time: timeValue,
@@ -227,12 +237,6 @@ const Sidebar = ({
         });
       }, 100);
     }
-    
-    // Сохраняем в localStorage для сохранности
-    localStorage.setItem(`chartData_${selectedNode.id}`, JSON.stringify({
-      data: formattedData,
-      params: sourceInfo
-    }));
     
     setChartParams(prev => ({
       ...prev,

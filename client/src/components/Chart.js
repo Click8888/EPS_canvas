@@ -10,7 +10,6 @@ import { UniversalTransition } from 'echarts/features';
 import { CanvasRenderer } from 'echarts/renderers';
 import ReactECharts from "echarts-for-react";
 
-// Инициализируем ECharts один раз
 echarts.use([
   TitleComponent,
   TooltipComponent,
@@ -20,11 +19,11 @@ echarts.use([
   UniversalTransition
 ]);
 
-// Функция для форматирования времени в формат ЧЧ:ММ:СС.мс
+// Функция для форматирования времени в формат ГГГГ-ММ-ДД ЧЧ:ММ:СС.мс
 const formatTime = (timeValue) => {
   if (timeValue === undefined || timeValue === null) return '';
   
-  // Если время в секундах (число)
+  // Если время в секундах (число меньше типичного timestamp)
   if (typeof timeValue === 'number' && timeValue < 1000000000) {
     const hours = Math.floor(timeValue / 3600);
     const minutes = Math.floor((timeValue % 3600) / 60);
@@ -34,20 +33,37 @@ const formatTime = (timeValue) => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
   }
   
-  // Если время в миллисекундах (timestamp)
+  // Если время в секундах (timestamp)
   if (typeof timeValue === 'number' && timeValue > 1000000000) {
-    const date = new Date(timeValue);
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const seconds = date.getSeconds();
-    const milliseconds = date.getMilliseconds();
+    const date = new Date(timeValue * 1000); // Конвертируем секунды в миллисекунды
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
     
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
   }
   
   // Если время в виде строки
   if (typeof timeValue === 'string') {
-    // Пробуем распарсить строку времени
+    // Пробуем преобразовать в Date (для полных дат)
+    const date = new Date(timeValue);
+    if (!isNaN(date.getTime())) {
+      const year = date.getFullYear();
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      const seconds = date.getSeconds().toString().padStart(2, '0');
+      const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
+      
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+    }
+    
+    // Пробуем распарсить строку времени (только время суток)
     const timeMatch = timeValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
     if (timeMatch) {
       const hours = parseInt(timeMatch[1]) || 0;
@@ -57,27 +73,19 @@ const formatTime = (timeValue) => {
       
       return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
     }
-    
-    // Пробуем преобразовать в Date
-    const date = new Date(timeValue);
-    if (!isNaN(date.getTime())) {
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      const seconds = date.getSeconds();
-      const milliseconds = date.getMilliseconds();
-      
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
-    }
   }
   
   // Если это объект Date
   if (timeValue instanceof Date) {
-    const hours = timeValue.getHours();
-    const minutes = timeValue.getMinutes();
-    const seconds = timeValue.getSeconds();
-    const milliseconds = timeValue.getMilliseconds();
+    const year = timeValue.getFullYear();
+    const month = (timeValue.getMonth() + 1).toString().padStart(2, '0');
+    const day = timeValue.getDate().toString().padStart(2, '0');
+    const hours = timeValue.getHours().toString().padStart(2, '0');
+    const minutes = timeValue.getMinutes().toString().padStart(2, '0');
+    const seconds = timeValue.getSeconds().toString().padStart(2, '0');
+    const milliseconds = timeValue.getMilliseconds().toString().padStart(3, '0');
     
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
   }
   
   return String(timeValue);
@@ -85,15 +93,18 @@ const formatTime = (timeValue) => {
 
 // Функция для преобразования времени в секунды (для числовой оси)
 const convertTimeToSeconds = (timeValue) => {
+  // Если уже число в секундах (относительное время)
   if (typeof timeValue === 'number' && timeValue < 1000000000) {
     return timeValue;
   }
   
+  // Если timestamp в секундах
   if (typeof timeValue === 'number' && timeValue > 1000000000) {
-    return timeValue / 1000;
+    return timeValue;
   }
   
   if (typeof timeValue === 'string') {
+    // СНАЧАЛА проверяем формат HH:MM:SS (приоритет!)
     const timeMatch = timeValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
     if (timeMatch) {
       const hours = parseInt(timeMatch[1]) || 0;
@@ -102,17 +113,32 @@ const convertTimeToSeconds = (timeValue) => {
       const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) / 1000 : 0;
       return hours * 3600 + minutes * 60 + seconds + milliseconds;
     }
+    
+    // ПОТОМ проверяем полную дату
+    const fullDateMatch = timeValue.match(/\d{4}-\d{2}-\d{2}/);
+    if (fullDateMatch) {
+      const date = new Date(timeValue);
+      if (!isNaN(date.getTime())) {
+        return date.getTime() / 1000;
+      }
+    }
+    
+    // Иначе пытаемся распарсить как число
+    const parsed = parseFloat(timeValue);
+    return isNaN(parsed) ? 0 : parsed;
   }
   
   if (timeValue instanceof Date) {
-    return timeValue.getHours() * 3600 + timeValue.getMinutes() * 60 + timeValue.getSeconds() + timeValue.getMilliseconds() / 1000;
+    return timeValue.getTime() / 1000;
   }
   
   return 0;
 };
 
 const defaultOption = {
-  animation: true,
+  animation: false,
+  animationDuration: 0,
+  animationEasing: 'linear',
   tooltip: {
     trigger: 'axis',
     axisPointer: { type: 'cross' },
@@ -138,12 +164,16 @@ const defaultOption = {
     type: 'value',
     nameLocation: 'middle',
     nameGap: 35,
+    animation: false,
     axisLabel: {
       formatter: function(value) {
         return formatTime(value);
       },
       rotate: 0,
-      interval: 1
+      interval: 'auto',
+      hideOverlap: true, //перекрывающиеся метки
+      showMinLabel: true, //показывать минимальную метку
+      showMaxLabel: true
     },
     minInterval: 1,
     splitLine: {
@@ -164,6 +194,7 @@ const defaultOption = {
   yAxis: {
     type: 'value',
     scale: false, // Отключаем автомасштабирование, чтобы 0 всегда был виден
+    animation: false,
     minorTick: {
       show: true
     },
@@ -270,20 +301,31 @@ const Chart = ({
   };
 
   // Инициализация экземпляра графика
-  useEffect(() => {
-    if (chartRef.current && !chartInstance) {
+  // Инициализация экземпляра графика
+useEffect(() => {
+  if (chartRef.current && !chartInstance) {
+    try {
       const instance = chartRef.current.getEchartsInstance();
-      setChartInstance(instance);
-      instance.resize();
-    }
-
-    // Очистка при размонтировании
-    return () => {
-      if (chartInstance) {
-        chartInstance.dispose();
+      if (instance) {
+        setChartInstance(instance);
+        instance.resize();
       }
-    };
-  }, [chartInstance]);
+    } catch (error) {
+      console.error('Ошибка инициализации графика:', error);
+    }
+  }
+
+  // Очистка при размонтировании
+  return () => {
+    if (chartInstance && typeof chartInstance.dispose === 'function') {
+      try {
+        chartInstance.dispose();
+      } catch (error) {
+        console.error('Ошибка при очистке графика:', error);
+      }
+    }
+  };
+}, [chartInstance]);
 
   // Начальная настройка графика
   useEffect(() => {
@@ -326,75 +368,91 @@ const Chart = ({
     };
   }, [chartInstance]);
 
-  // Обновление данных графика
-  useEffect(() => {
-    if (!chartInstance || !chartData) return;
+// Обновление данных графика
+useEffect(() => {
+  if (!chartInstance || !chartData) return;
 
-    const formattedData = formatDataForECharts(chartData);
+  const formattedData = formatDataForECharts(chartData);
+  
+  // Проверяем, взаимодействует ли пользователь с графиком
+  if (userInteractingRef.current) {
+    // 1: Пользователь взаимодействует - обновляем ТОЛЬКО данные
+    const updateOption = {
+      animation: false,
+      series: [
+        {
+          animation: false,
+          data: formattedData.values.map((value, index) => [formattedData.time[index], value])
+        }
+      ]
+    };
     
-    // Проверяем, взаимодействует ли пользователь с графиком
-    if (userInteractingRef.current) {
-      // РЕЖИМ 1: Пользователь взаимодействует - обновляем ТОЛЬКО данные
-      const updateOption = {
-        series: [
-          {
-            data: formattedData.values.map((value, index) => [formattedData.time[index], value])
-          }
-        ]
-      };
-      
-      // notMerge: false сохраняет состояние zoom/pan
-      chartInstance.setOption(updateOption, false);
-      
-    } else {
-      // РЕЖИМ 2: Пользователь НЕ взаимодействует - обновляем данные И оси
-      const newOption = {
-        xAxis: {
-          ...defaultOption.xAxis,
-          data: formattedData.time,
-          min: function(value) {
-            const range = value.max - value.min;
-            return value.min - range * 0.1; // 10% отступ слева
-          },
-          max: function(value) {
-            const range = value.max - value.min;
-            return value.max + range * 0.1; // 10% отступ справа
-          },
-          axisLabel: {
-            ...defaultOption.xAxis.axisLabel,
-            interval: 1
-          }
-        },
-        yAxis: {
-          ...defaultOption.yAxis,
-          min: function(value) {
-            const range = value.max - value.min;
-            const minWithPadding = value.min - range * 0.1;
-            return Math.min(minWithPadding, 0);
-          },
-          max: function(value) {
-            const range = value.max - value.min;
-            const maxWithPadding = value.max + range * 0.1;
-            return Math.max(maxWithPadding, 0);
-          }
-        },
-        series: [
-          {
-            ...defaultOption.series[0],
-            data: formattedData.values.map((value, index) => [formattedData.time[index], value]),
-            name: 'Точка'
-          }
-        ]
-      };
-      
-      // Обновляем состояние option для ReactECharts
-      setOption(newOption);
-      
-      // notMerge: false для плавного обновления
-      chartInstance.setOption(newOption, false);
+    if (chartInstance && typeof chartInstance.setOption === 'function') {
+      try {
+        chartInstance.setOption(updateOption, false, false);
+      } catch (error) {
+        console.error('Ошибка обновления графика:', error);
+      }
     }
+    
+  } else {
+    // РЕЖИМ 2: Пользователь НЕ взаимодействует - обновляем данные И оси
+    const newOption = {
+      animation: false,
+      xAxis: {
+        ...defaultOption.xAxis,
+        animation: false,
+        data: formattedData.time,
+        min: function(value) {
+          const range = value.max - value.min;
+          return value.min - range * 0.1;
+        },
+        max: function(value) {
+          const range = value.max - value.min;
+          return value.max + range * 0.1;
+        },
+        axisLabel: {
+          ...defaultOption.xAxis.axisLabel,
+          interval: 'auto',
+          hideOverlap: true
+        }
+      },
+      yAxis: {
+        ...defaultOption.yAxis,
+        animation: false,
+        min: function(value) {
+          const range = value.max - value.min;
+          const minWithPadding = value.min - range * 0.1;
+          return Math.min(minWithPadding, 0);
+        },
+        max: function(value) {
+          const range = value.max - value.min;
+          const maxWithPadding = value.max + range * 0.1;
+          return Math.max(maxWithPadding, 0);
+        }
+      },
+      series: [
+        {
+          ...defaultOption.series[0],
+          animation: false,
+          data: formattedData.values.map((value, index) => [formattedData.time[index], value]),
+          name: 'Точка'
+        }
+      ]
+    };
+    
+    setOption(newOption);
+    
+    if (chartInstance && typeof chartInstance.setOption === 'function') {
+      try {
+        chartInstance.setOption(newOption, false, false);
+      } catch (error) {
+        console.error('Ошибка обновления графика:', error);
+      }
+    }
+  }
 
-  }, [chartData, activeGraphUpdate, chartInstance]);
+}, [chartData, activeGraphUpdate, chartInstance]);
 
   return (
     <div
@@ -421,15 +479,19 @@ const Chart = ({
       
       {/* Кнопка сброса zoom - показывается только когда пользователь взаимодействовал */}
       {userInteracting && (
-        <button
-          onClick={() => {
-            if (chartInstance) {
-              // Сбрасываем zoom и возвращаемся к автоматическому режиму
-              chartInstance.dispatchAction({ type: 'restore' });
-              userInteractingRef.current = false;
-              setUserInteracting(false);
-            }
-          }}
+  <button
+    onClick={() => {
+      if (chartInstance && typeof chartInstance.dispatchAction === 'function') {
+        try {
+          // Сбрасываем zoom и возвращаемся к автоматическому режиму
+          chartInstance.dispatchAction({ type: 'restore' });
+          userInteractingRef.current = false;
+          setUserInteracting(false);
+        } catch (error) {
+          console.error('Ошибка сброса масштаба:', error);
+        }
+      }
+    }}
           style={{
             position: 'absolute',
             top: '10px',
