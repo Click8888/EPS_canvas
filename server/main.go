@@ -31,7 +31,7 @@ func main() {
 
     // Настройка CORS - исправленная версия
     r.Use(cors.New(cors.Config{
-        AllowOrigins:     []string{"http://localhost:3000", "http://visualgraph.ru", "http://www.visualgraph.ru"},
+        AllowOrigins:     []string{"*"},
         AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
         AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
         ExposeHeaders:    []string{"Content-Length", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"},

@@ -1,0 +1,72 @@
+.chart-custom-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #2a2a2a;
+}
+
+.chart-custom-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.chart-custom-canvas.dragging {
+  cursor: grabbing;
+}
+
+.chart-custom-legend {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(42, 42, 42, 0.9);
+  border: 1px solid #555;
+  border-radius: 5px;
+  padding: 10px;
+  min-width: 180px;
+  backdrop-filter: blur(2px);
+  z-index: 10;
+}
+
+.chart-custom-legend-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 2px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.chart-custom-legend-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chart-custom-legend-item-hidden {
+  opacity: 0.4;
+}
+
+.chart-custom-controls {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  gap: 5px;
+  z-index: 10;
+}
+
+.chart-custom-control-btn {
+  background: rgba(42, 42, 42, 0.8) !important;
+  border-color: #555 !important;
+  color: #fff !important;
+  padding: 2px 8px !important;
+  font-size: 12px !important;
+}
+
+.chart-custom-control-btn:hover {
+  background: rgba(42, 42, 42, 0.9) !important;
+  border-color: #666 !important;
+}

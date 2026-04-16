@@ -181,7 +181,11 @@ const Sidebar = ({
     const hours = parseInt(timeMatch[1]) || 0;
     const minutes = parseInt(timeMatch[2]) || 0;
     const seconds = parseInt(timeMatch[3]) || 0;
-    const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) : 0;
+    let milliseconds = 0;
+    if (timeMatch[4]) {
+      const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+      milliseconds = parseInt(msString, 10);
+    }
     timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
   } else {
     // Проверяем, содержит ли строка полную дату

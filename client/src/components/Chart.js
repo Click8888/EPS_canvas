@@ -104,29 +104,36 @@ const convertTimeToSeconds = (timeValue) => {
   }
   
   if (typeof timeValue === 'string') {
-    // СНАЧАЛА проверяем формат HH:MM:SS (приоритет!)
-    const timeMatch = timeValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
-    if (timeMatch) {
-      const hours = parseInt(timeMatch[1]) || 0;
-      const minutes = parseInt(timeMatch[2]) || 0;
-      const seconds = parseInt(timeMatch[3]) || 0;
-      const milliseconds = timeMatch[4] ? parseInt(timeMatch[4].substring(0, 3)) / 1000 : 0;
-      return hours * 3600 + minutes * 60 + seconds + milliseconds;
+  // СНАЧАЛА проверяем полную дату (приоритет!)
+  const fullDateMatch = timeValue.match(/\d{4}-\d{2}-\d{2}/);
+  if (fullDateMatch) {
+    const date = new Date(timeValue);
+    if (!isNaN(date.getTime())) {
+      return date.getTime() / 1000;
     }
-    
-    // ПОТОМ проверяем полную дату
-    const fullDateMatch = timeValue.match(/\d{4}-\d{2}-\d{2}/);
-    if (fullDateMatch) {
-      const date = new Date(timeValue);
-      if (!isNaN(date.getTime())) {
-        return date.getTime() / 1000;
-      }
-    }
-    
-    // Иначе пытаемся распарсить как число
-    const parsed = parseFloat(timeValue);
-    return isNaN(parsed) ? 0 : parsed;
   }
+  
+  // ПОТОМ проверяем формат HH:MM:SS (только для времени без даты)
+  const timeMatch = timeValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
+  if (timeMatch) {
+    const hours = parseInt(timeMatch[1], 10) || 0;
+    const minutes = parseInt(timeMatch[2], 10) || 0;
+    const seconds = parseInt(timeMatch[3], 10) || 0;
+    
+    let milliseconds = 0;
+    if (timeMatch[4]) {
+      // Правильная обработка миллисекунд
+      const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+      milliseconds = parseInt(msString, 10) / 1000;
+    }
+    
+    return hours * 3600 + minutes * 60 + seconds + milliseconds;
+  }
+  
+  // Иначе пытаемся распарсить как число
+  const parsed = parseFloat(timeValue);
+  return isNaN(parsed) ? 0 : parsed;
+}
   
   if (timeValue instanceof Date) {
     return timeValue.getTime() / 1000;
@@ -175,7 +182,7 @@ const defaultOption = {
       showMinLabel: true, //показывать минимальную метку
       showMaxLabel: true
     },
-    minInterval: 1,
+    minInterval: 0.001,
     splitLine: {
       show: false //Линии от оси
     },
@@ -233,6 +240,7 @@ const defaultOption = {
       type: 'line',
       showSymbol: false,
       clip: true,
+      connectNulls: true,
       itemStyle: {
         color: '#4dabf7'
       },
