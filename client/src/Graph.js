@@ -49,7 +49,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [pollingIntervalId, setPollingIntervalId] = useState(null);
   const [wsConnection, setWsConnection] = useState(null);
-  
+  const [yScaleMode, setYScaleMode] = useState('dynamic');
   const nodeRef = useRef(null);
   const updateIntervalRef = useRef(null);
   const settingsPanelRef = useRef(null);
@@ -253,7 +253,9 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     if (data.dataSourceInfo) {
       setDataSourceInfo(data.dataSourceInfo);
     }
-    
+    if (data.dataSourceInfo && data.dataSourceInfo.yScaleMode) {
+      setYScaleMode(data.dataSourceInfo.yScaleMode);
+    }
     if (data.series) setChartSeries(data.series);
     if (data.width && data.height) {
       setNodeSize({ width: data.width, height: data.height });
@@ -575,7 +577,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
               activeGraphUpdate={activeGraphUpdate}
               chartData={chartData}
               width={nodeSize.width}
-              height={nodeSize.height - 60}
+              height={nodeSize.height - 50}
+              yScaleMode={yScaleMode}
             />
           </div>
         )}

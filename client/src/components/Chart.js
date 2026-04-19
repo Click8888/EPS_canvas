@@ -226,12 +226,9 @@ const defaultOption = {
       type: 'inside',
       filterMode: 'none',
       xAxisIndex: [0],
-    },
-    {
-      show: true,
-      type: 'inside',
-      filterMode: 'none',
-      yAxisIndex: [0],
+      zoomOnMouseWheel: true,  // Зум колесиком мыши
+      moveOnMouseMove: false,   // Перемещение отключено
+      moveOnMouseWheel: false   // Перемещение колесиком отключено
     }
   ],
   series: [
@@ -261,6 +258,7 @@ const Chart = ({
   chartData, 
   width = '100%', 
   height = '600px',
+  yScaleMode = 'dynamic', // Принимаем режим из props
 }) => {
   const chartRef = useRef(null);
   const [option, setOption] = useState(defaultOption);
@@ -269,14 +267,14 @@ const Chart = ({
   // Состояние для отслеживания взаимодействия пользователя с графиком
   const [userInteracting, setUserInteracting] = useState(false);
   const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
-  
+  const [currentXRange, setCurrentXRange] = useState(null); // Текущий диапазон X после зума 
 
   // Преобразуем данные в формат, понятный ECharts
   const formatDataForECharts = (data) => {
     if (!data || !Array.isArray(data)) return { time: [], values: [] };
 
     // Ограничиваем отображение до последних 200 точек
-    const limitedData = data.length > 300 ? data.slice(-300) : data;
+    const limitedData = data.length > 1000 ? data.slice(-1000) : data;
 
     const time = [];
     const values = [];
@@ -308,7 +306,70 @@ const Chart = ({
     return { time, values };
   };
 
-  // Инициализация экземпляра графика
+  // Функция для расчета диапазона Y на основе видимых данных X
+const calculateYRange = (data, xMin, xMax, mode = 'dynamic') => {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return { min: 0, max: 100 };
+  }
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  if (mode === 'dynamic' && xMin !== null && xMax !== null) {
+    // ВАРИАНТ A: Только видимые данные в диапазоне X
+    data.forEach(item => {
+      if (item && typeof item === 'object') {
+        let timeValue;
+        
+        if (item.originalTime !== undefined) {
+          timeValue = item.originalTime;
+        } else if (item.time !== undefined) {
+          timeValue = item.time;
+        } else {
+          return;
+        }
+        
+        const timeInSeconds = convertTimeToSeconds(timeValue);
+        
+        // Проверяем, попадает ли точка в видимый диапазон X
+        if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
+          const value = parseFloat(item.value);
+          if (!isNaN(value)) {
+            minY = Math.min(minY, value);
+            maxY = Math.max(maxY, value);
+          }
+        }
+      }
+    });
+  } else {
+    // ВАРИАНТ B: Все данные
+    data.forEach(item => {
+      if (item && typeof item === 'object' && item.value !== undefined) {
+        const value = parseFloat(item.value);
+        if (!isNaN(value)) {
+          minY = Math.min(minY, value);
+          maxY = Math.max(maxY, value);
+        }
+      }
+    });
+  }
+
+  // Если не нашли данных
+  if (minY === Infinity || maxY === -Infinity) {
+    return { min: 0, max: 100 };
+  }
+
+  // Добавляем 20% отступа сверху и снизу
+  const range = maxY - minY || 1;
+  const padding = range * 0.2;
+  
+  return {
+    min: minY - padding,
+    max: maxY + padding
+  };
+};
+
+
   // Инициализация экземпляра графика
 useEffect(() => {
   if (chartRef.current && !chartInstance) {
@@ -342,6 +403,55 @@ useEffect(() => {
     // Устанавливаем начальную конфигурацию графика
     chartInstance.setOption(defaultOption, true);
   }, [chartInstance]);
+
+  // Отслеживание изменений диапазона X при зуме
+useEffect(() => {
+  if (!chartInstance) return;
+
+  const handleDataZoomEvent = (params) => {
+    if (params.batch && params.batch.length > 0) {
+      const xAxisZoom = params.batch.find(b => b.dataZoomId && b.xAxisIndex !== undefined);
+      
+      if (xAxisZoom) {
+        // Получаем текущий диапазон X
+        const option = chartInstance.getOption();
+        if (option && option.xAxis && option.xAxis[0]) {
+          const xAxis = option.xAxis[0];
+          const xData = xAxis.data || [];
+          
+          // Сохраняем текущий диапазон X
+          if (xAxisZoom.startValue !== undefined && xAxisZoom.endValue !== undefined) {
+            setCurrentXRange({
+              min: xAxisZoom.startValue,
+              max: xAxisZoom.endValue
+            });
+          } else if (xAxisZoom.start !== undefined && xAxisZoom.end !== undefined) {
+            // Если используются проценты, конвертируем в значения
+            const allData = chartInstance.getOption().series[0].data || [];
+            if (allData.length > 0) {
+              const startIdx = Math.floor((xAxisZoom.start / 100) * allData.length);
+              const endIdx = Math.ceil((xAxisZoom.end / 100) * allData.length);
+              
+              if (allData[startIdx] && allData[endIdx - 1]) {
+                setCurrentXRange({
+                  min: allData[startIdx][0],
+                  max: allData[endIdx - 1][0]
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+
+  chartInstance.on('dataZoom', handleDataZoomEvent);
+
+  return () => {
+    chartInstance.off('dataZoom', handleDataZoomEvent);
+  };
+}, [chartInstance]);
+
 
   // Отслеживание взаимодействия пользователя с графиком
   useEffect(() => {
@@ -429,14 +539,23 @@ useEffect(() => {
         ...defaultOption.yAxis,
         animation: false,
         min: function(value) {
-          const range = value.max - value.min;
-          const minWithPadding = value.min - range * 0.1;
-          return Math.min(minWithPadding, 0);
+          // Используем calculateYRange для определения диапазона
+          const yRange = calculateYRange(
+            chartData, 
+            currentXRange?.min || null, 
+            currentXRange?.max || null, 
+            yScaleMode
+          );
+          return yRange.min;
         },
         max: function(value) {
-          const range = value.max - value.min;
-          const maxWithPadding = value.max + range * 0.1;
-          return Math.max(maxWithPadding, 0);
+          const yRange = calculateYRange(
+            chartData, 
+            currentXRange?.min || null, 
+            currentXRange?.max || null, 
+            yScaleMode
+          );
+          return yRange.max;
         }
       },
       series: [
@@ -460,7 +579,7 @@ useEffect(() => {
     }
   }
 
-}, [chartData, activeGraphUpdate, chartInstance]);
+}, [chartData, activeGraphUpdate, chartInstance, currentXRange]);
 
   return (
     <div
@@ -494,6 +613,8 @@ useEffect(() => {
           // Сбрасываем zoom и возвращаемся к автоматическому режиму
           chartInstance.dispatchAction({ type: 'restore' });
           userInteractingRef.current = false;
+          // Сбрасываем сохраненный диапазон X
+          setCurrentXRange(null);
           setUserInteracting(false);
         } catch (error) {
           console.error('Ошибка сброса масштаба:', error);
@@ -509,7 +630,7 @@ useEffect(() => {
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer',
+            //cursor: 'pointer',
             fontSize: '12px',
             fontWeight: '500',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
@@ -523,6 +644,7 @@ useEffect(() => {
         </button>
       )}
     </div>
+    
   );
 };
 

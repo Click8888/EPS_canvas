@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -22,33 +23,39 @@ func (PMUMeasurement) TableName() string {
 
 func main() {
 	// Подключение к БД PMU
-	dsn := "host=localhost port=5432 user=postgres password=antivzlom dbname=pmu sslmode=disable TimeZone=UTC"
+	dsn := "host=localhost port=5432 user=postgres password=123 dbname=pmu sslmode=disable TimeZone=UTC"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Ошибка подключения к БД: %v", err)
 	}
 
 	fmt.Println("=== Генератор тестовых данных для PMU ===")
+	fmt.Println("Генерация случайных значений в диапазоне от -3 до 15")
 	fmt.Println("Нажмите Ctrl+C для остановки")
 	fmt.Println()
 
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 
-	startTime := time.Now()
 	count := 0
 
-	for range ticker.C {
-		elapsed := time.Since(startTime).Seconds()
+	// Инициализация генератора случайных чисел
+	rand.Seed(time.Now().UnixNano())
 
-		// Генерация синусоидальных значений
-		currentValue := 2.0*math.Sin(2*math.Pi*0.5*elapsed) + 2.0
-		voltageValue := 4.0*math.Sin(2*math.Pi*0.3*elapsed) + 6.0
+	// Параметры диапазона
+	minValue := -3.0
+	maxValue := 15.0
+	rangeValue := maxValue - minValue // 18.0
+
+	for range ticker.C {
+		// Генерация полностью случайных значений в диапазоне от -3 до 15
+		currentValue := rand.Float64()*rangeValue + minValue
+		voltageValue := rand.Float64()*rangeValue + minValue
 
 		measurement := PMUMeasurement{
 			Time:         time.Now(),
-			CurrentValue: math.Round(currentValue*1000) / 1000,
-			VoltageValue: math.Round(voltageValue*1000) / 1000,
+			CurrentValue: math.Round(currentValue*1000) / 1000, // Округление до 3 знаков
+			VoltageValue: math.Round(voltageValue*1000) / 1000, // Округление до 3 знаков
 		}
 
 		if err := db.Create(&measurement).Error; err != nil {

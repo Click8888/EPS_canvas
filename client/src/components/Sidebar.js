@@ -39,6 +39,7 @@ const Sidebar = ({
     columns: [],
     xAxisColumn: '',
     yAxisColumn: '',
+    yScaleMode: 'dynamic', // Добавить режим масштабирования Y
     isLoadingParams: false,
     paramError: ''
   });
@@ -226,6 +227,7 @@ const Sidebar = ({
       table: chartParams.selectedTable,
       xAxis: xAxisColumn,
       yAxis: yAxisColumn,
+      yScaleMode: chartParams.yScaleMode, // Передаем режим масштабирования Y
       dataPoints: formattedData.length
     };
     
@@ -694,6 +696,41 @@ const Sidebar = ({
                               </select>
                             </div>
                             
+                            {/* Режим масштабирования оси Y */}
+                            <div className="mb-3">
+                              <label className="form-label" style={{ fontSize: '12px' }}>
+                                <i className="bi bi-arrows-expand me-1"></i>
+                                Режим масштабирования оси Y:
+                              </label>
+                              <div className="btn-group w-100" role="group">
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm ${chartParams.yScaleMode === 'dynamic' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                  onClick={() => setChartParams(prev => ({ ...prev, yScaleMode: 'dynamic' }))}
+                                  title="Ось Y адаптируется к видимым данным на оси X"
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  <i className="bi bi-graph-up me-1"></i>
+                                  Динамическая
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm ${chartParams.yScaleMode === 'fixed' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                  onClick={() => setChartParams(prev => ({ ...prev, yScaleMode: 'fixed' }))}
+                                  title="Ось Y показывает весь диапазон данных"
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  <i className="bi bi-arrows-vertical me-1"></i>
+                                  Фиксированная
+                                </button>
+                              </div>
+                              <small className="form-text text-muted" style={{ fontSize: '10px' }}>
+                                {chartParams.yScaleMode === 'dynamic' 
+                                  ? '📊 Y подстраивается под видимые данные при зуме X' 
+                                  : '📏 Y всегда показывает полный диапазон всех данных'}
+                              </small>
+                            </div>
+
                             {/* Статистика данных */}
                             {chartParams.tableData.length > 0 && (
                               <div className="data-stats mb-3 p-2 bg-dark rounded" style={{ fontSize: '11px' }}>
