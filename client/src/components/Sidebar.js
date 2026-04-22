@@ -39,7 +39,6 @@ const Sidebar = ({
     columns: [],
     xAxisColumn: '',
     yAxisColumn: '',
-    yScaleMode: 'dynamic', // Добавить режим масштабирования Y
     isLoadingParams: false,
     paramError: ''
   });
@@ -176,37 +175,33 @@ const Sidebar = ({
         if (xValue instanceof Date) {
   timeValue = xValue.getTime() / 1000;
 } else if (typeof xValue === 'string') {
-  // Проверяем формат HH:MM:SS.mmm
-  const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
-  if (timeMatch) {
-    const hours = parseInt(timeMatch[1]) || 0;
-    const minutes = parseInt(timeMatch[2]) || 0;
-    const seconds = parseInt(timeMatch[3]) || 0;
-    let milliseconds = 0;
-    if (timeMatch[4]) {
-      const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
-      milliseconds = parseInt(msString, 10);
+  // СНАЧАЛА проверяем полную дату (приоритет!)
+  const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+  if (fullDateMatch) {
+    const date = new Date(xValue);
+    if (!isNaN(date.getTime())) {
+      timeValue = date.getTime() / 1000;
+    } else {
+      timeValue = parseFloat(xValue) || 0;
     }
-    timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
   } else {
-    // Проверяем, содержит ли строка полную дату
-    const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
-    if (fullDateMatch) {
-      const date = new Date(xValue);
-      if (!isNaN(date.getTime())) {
-        timeValue = date.getTime() / 1000;
-      } else {
-        timeValue = parseFloat(xValue) || 0;
+    // ПОТОМ проверяем формат HH:MM:SS.mmm (только для времени без даты)
+    const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
+    if (timeMatch) {
+      const hours = parseInt(timeMatch[1]) || 0;
+      const minutes = parseInt(timeMatch[2]) || 0;
+      const seconds = parseInt(timeMatch[3]) || 0;
+      let milliseconds = 0;
+      if (timeMatch[4]) {
+        const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+        milliseconds = parseInt(msString, 10);
       }
+      timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
     } else {
       // Просто число в виде строки
       timeValue = parseFloat(xValue) || 0;
     }
   }
-} else if (typeof xValue === 'number') {
-  timeValue = xValue;
-} else {
-  timeValue = index;
 }
         
         return {
@@ -227,10 +222,14 @@ const Sidebar = ({
       table: chartParams.selectedTable,
       xAxis: xAxisColumn,
       yAxis: yAxisColumn,
-      yScaleMode: chartParams.yScaleMode, // Передаем режим масштабирования Y
       dataPoints: formattedData.length
     };
     
+    // Очищаем старые данные из localStorage
+if (selectedNode && selectedNode.id) {
+  localStorage.removeItem(`chartData_${selectedNode.id}`);
+}
+
     // Используем глобальную функцию для обновления узла
     if (window.updateNodeData && selectedNode) {
       window.updateNodeData(selectedNode.id, formattedData);
@@ -694,41 +693,6 @@ const Sidebar = ({
                                   <option key={`y-${column}`} value={column}>{column}</option>
                                 ))}
                               </select>
-                            </div>
-                            
-                            {/* Режим масштабирования оси Y */}
-                            <div className="mb-3">
-                              <label className="form-label" style={{ fontSize: '12px' }}>
-                                <i className="bi bi-arrows-expand me-1"></i>
-                                Режим масштабирования оси Y:
-                              </label>
-                              <div className="btn-group w-100" role="group">
-                                <button
-                                  type="button"
-                                  className={`btn btn-sm ${chartParams.yScaleMode === 'dynamic' ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                  onClick={() => setChartParams(prev => ({ ...prev, yScaleMode: 'dynamic' }))}
-                                  title="Ось Y адаптируется к видимым данным на оси X"
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  <i className="bi bi-graph-up me-1"></i>
-                                  Динамическая
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`btn btn-sm ${chartParams.yScaleMode === 'fixed' ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                  onClick={() => setChartParams(prev => ({ ...prev, yScaleMode: 'fixed' }))}
-                                  title="Ось Y показывает весь диапазон данных"
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  <i className="bi bi-arrows-vertical me-1"></i>
-                                  Фиксированная
-                                </button>
-                              </div>
-                              <small className="form-text text-muted" style={{ fontSize: '10px' }}>
-                                {chartParams.yScaleMode === 'dynamic' 
-                                  ? '📊 Y подстраивается под видимые данные при зуме X' 
-                                  : '📏 Y всегда показывает полный диапазон всех данных'}
-                              </small>
                             </div>
 
                             {/* Статистика данных */}

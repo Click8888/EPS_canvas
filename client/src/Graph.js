@@ -78,8 +78,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     }
     
     sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
-
-    //console.log('Выполняем SQL:', sql);
+    sql += ` LIMIT 1000`
+    console.log('Выполняем SQL:', sql);
     
     const response = await fetch('http://localhost:8080/api/execute-query', {
       method: 'POST',

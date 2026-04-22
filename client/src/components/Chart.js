@@ -91,6 +91,57 @@ const formatTime = (timeValue) => {
   return String(timeValue);
 };
 
+// Функция для форматирования только времени (без даты) для оси X
+const formatTimeOnly = (timeValue) => {
+  if (timeValue === undefined || timeValue === null) return '';
+  
+  // Если время в секундах (число меньше типичного timestamp)
+  if (typeof timeValue === 'number' && timeValue < 1000000000) {
+    const hours = Math.floor(timeValue / 3600);
+    const minutes = Math.floor((timeValue % 3600) / 60);
+    const seconds = Math.floor(timeValue % 60);
+    const milliseconds = Math.floor((timeValue % 1) * 1000);
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+  }
+  
+  // Если timestamp в секундах - извлекаем только время
+  if (typeof timeValue === 'number' && timeValue > 1000000000) {
+    const date = new Date(timeValue * 1000);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
+    
+    return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+  }
+  
+  // Если строка - пытаемся извлечь время
+  if (typeof timeValue === 'string') {
+    const timeMatch = timeValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
+    if (timeMatch) {
+      const hours = parseInt(timeMatch[1]).toString().padStart(2, '0');
+      const minutes = parseInt(timeMatch[2]).toString().padStart(2, '0');
+      const seconds = parseInt(timeMatch[3]).toString().padStart(2, '0');
+      const milliseconds = timeMatch[4] ? timeMatch[4].substring(0, 3).padStart(3, '0') : '000';
+      
+      return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+    }
+  }
+  
+  // Если объект Date - извлекаем только время
+  if (timeValue instanceof Date) {
+    const hours = timeValue.getHours().toString().padStart(2, '0');
+    const minutes = timeValue.getMinutes().toString().padStart(2, '0');
+    const seconds = timeValue.getSeconds().toString().padStart(2, '0');
+    const milliseconds = timeValue.getMilliseconds().toString().padStart(3, '0');
+    
+    return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+  }
+  
+  return String(timeValue);
+};
+
 // Функция для преобразования времени в секунды (для числовой оси)
 const convertTimeToSeconds = (timeValue) => {
   // Если уже число в секундах (относительное время)
@@ -152,9 +203,9 @@ const defaultOption = {
     formatter: function(params) {
       if (!params || params.length === 0) return '';
       const timeValue = params[0].value[0];
-      const formattedTime = formatTime(timeValue);
+      const formattedTime = formatTimeOnly(timeValue);
       const value = params[0].value[1];
-      return `Время: ${formattedTime}<br/>Значение: ${value}`;
+      return `Время: ${formattedTime}<br/>Значение: ${value.toFixed(2)}`;
     }
   },
   // Добавляем настройки для axisPointer на осях
@@ -163,7 +214,7 @@ const defaultOption = {
     label: {
       formatter: function(params) {
         // params.value - это значение на оси X в секундах
-        return formatTime(params.value);
+        return formatTimeOnly(params.value);
       }
     }
   },
@@ -174,7 +225,7 @@ const defaultOption = {
     animation: false,
     axisLabel: {
       formatter: function(value) {
-        return formatTime(value);
+        return formatTimeOnly(value);
       },
       rotate: 0,
       interval: 'auto',
@@ -200,8 +251,14 @@ const defaultOption = {
   },
   yAxis: {
     type: 'value',
-    scale: false, // Отключаем автомасштабирование, чтобы 0 всегда был виден
+    scale: false,
     animation: false,
+    axisLabel: {
+      formatter: function(value) {
+        // Форматируем как обычное число с 1 знаком после запятой
+        return value.toFixed(1);
+      }
+    },
     minorTick: {
       show: true
     },
@@ -226,9 +283,10 @@ const defaultOption = {
       type: 'inside',
       filterMode: 'none',
       xAxisIndex: [0],
-      zoomOnMouseWheel: true,  // Зум колесиком мыши
-      moveOnMouseMove: false,   // Перемещение отключено
-      moveOnMouseWheel: false   // Перемещение колесиком отключено
+      zoomOnMouseWheel: true,     // Зум колесиком мыши
+      moveOnMouseMove: true,      // Перемещение зажатой ЛКМ ВКЛЮЧЕНО
+      moveOnMouseWheel: false,    // Перемещение колесиком отключено
+      preventDefaultMouseMove: true // Предотвращаем стандартное поведение
     }
   ],
   series: [
@@ -237,9 +295,13 @@ const defaultOption = {
       type: 'line',
       showSymbol: false,
       clip: true,
-      connectNulls: true,
+      connectNulls: false,
       itemStyle: {
         color: '#4dabf7'
+      },
+      lineStyle: {
+        color: '#1f02c3',
+        width: 2.2
       },
       data: []
     }
@@ -258,7 +320,6 @@ const Chart = ({
   chartData, 
   width = '100%', 
   height = '600px',
-  yScaleMode = 'dynamic', // Принимаем режим из props
 }) => {
   const chartRef = useRef(null);
   const [option, setOption] = useState(defaultOption);
@@ -268,6 +329,9 @@ const Chart = ({
   const [userInteracting, setUserInteracting] = useState(false);
   const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
   const [currentXRange, setCurrentXRange] = useState(null); // Текущий диапазон X после зума 
+
+  // ДОБАВИТЬ: Получаем devicePixelRatio для высокого качества
+  const dpr = window.devicePixelRatio || 1;
 
   // Преобразуем данные в формат, понятный ECharts
   const formatDataForECharts = (data) => {
@@ -307,7 +371,7 @@ const Chart = ({
   };
 
   // Функция для расчета диапазона Y на основе видимых данных X
-const calculateYRange = (data, xMin, xMax, mode = 'dynamic') => {
+const calculateYRange = (data, xMin, xMax) => {
   if (!data || !Array.isArray(data) || data.length === 0) {
     return { min: 0, max: 100 };
   }
@@ -315,44 +379,44 @@ const calculateYRange = (data, xMin, xMax, mode = 'dynamic') => {
   let minY = Infinity;
   let maxY = -Infinity;
 
-  if (mode === 'dynamic' && xMin !== null && xMax !== null) {
-    // ВАРИАНТ A: Только видимые данные в диапазоне X
-    data.forEach(item => {
-      if (item && typeof item === 'object') {
-        let timeValue;
-        
-        if (item.originalTime !== undefined) {
-          timeValue = item.originalTime;
-        } else if (item.time !== undefined) {
-          timeValue = item.time;
-        } else {
-          return;
-        }
-        
-        const timeInSeconds = convertTimeToSeconds(timeValue);
-        
-        // Проверяем, попадает ли точка в видимый диапазон X
-        if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
-          const value = parseFloat(item.value);
-          if (!isNaN(value)) {
-            minY = Math.min(minY, value);
-            maxY = Math.max(maxY, value);
-          }
-        }
+if (xMin !== null && xMax !== null) {
+  // Только видимые данные в диапазоне X
+  data.forEach(item => {
+    if (item && typeof item === 'object') {
+      let timeValue;
+      
+      if (item.originalTime !== undefined) {
+        timeValue = item.originalTime;
+      } else if (item.time !== undefined) {
+        timeValue = item.time;
+      } else {
+        return;
       }
-    });
-  } else {
-    // ВАРИАНТ B: Все данные
-    data.forEach(item => {
-      if (item && typeof item === 'object' && item.value !== undefined) {
+      
+      const timeInSeconds = convertTimeToSeconds(timeValue);
+      
+      // Проверяем, попадает ли точка в видимый диапазон X
+      if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
         const value = parseFloat(item.value);
         if (!isNaN(value)) {
           minY = Math.min(minY, value);
           maxY = Math.max(maxY, value);
         }
       }
-    });
-  }
+    }
+  });
+} else {
+  // Fallback: все данные (когда диапазон X не определен)
+  data.forEach(item => {
+    if (item && typeof item === 'object' && item.value !== undefined) {
+      const value = parseFloat(item.value);
+      if (!isNaN(value)) {
+        minY = Math.min(minY, value);
+        maxY = Math.max(maxY, value);
+      }
+    }
+  });
+}
 
   // Если не нашли данных
   if (minY === Infinity || maxY === -Infinity) {
@@ -544,7 +608,6 @@ useEffect(() => {
             chartData, 
             currentXRange?.min || null, 
             currentXRange?.max || null, 
-            yScaleMode
           );
           return yRange.min;
         },
@@ -553,7 +616,6 @@ useEffect(() => {
             chartData, 
             currentXRange?.min || null, 
             currentXRange?.max || null, 
-            yScaleMode
           );
           return yRange.max;
         }
@@ -587,7 +649,8 @@ useEffect(() => {
       style={{ 
         width: width, 
         height: height,
-        position: 'relative'
+        position: 'relative',
+        cursor: 'grab' // Курсор "рука" для перемещения
       }}
     >
       <ReactECharts
@@ -601,7 +664,10 @@ useEffect(() => {
         height: height,
         minHeight: '300px'
       }}
-        opts={{ renderer: 'canvas' }}
+        opts={{ 
+          renderer: 'canvas',
+          devicePixelRatio: dpr * 2  // Качество рендера при варианте canvas (можно ещё использовать svg, но она добавляет разрешения только осям)
+        }}
       />
       
       {/* Кнопка сброса zoom - показывается только когда пользователь взаимодействовал */}
@@ -630,7 +696,7 @@ useEffect(() => {
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
-            //cursor: 'pointer',
+            cursor: 'pointer',
             fontSize: '12px',
             fontWeight: '500',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
