@@ -205,7 +205,7 @@ const defaultOption = {
       const timeValue = params[0].value[0];
       const formattedTime = formatTimeOnly(timeValue);
       const value = params[0].value[1];
-      return `Время: ${formattedTime}<br/>Значение: ${value.toFixed(2)}`;
+      return `Время: ${formattedTime}<br/>Значение: ${parseFloat(value.toFixed(6)).toString()}`; //return parseFloat(params.value.toFixed(6)).toString();
     }
   },
   // Добавляем настройки для axisPointer на осях
@@ -213,8 +213,12 @@ const defaultOption = {
     link: { xAxisIndex: 'all' },
     label: {
       formatter: function(params) {
-        // params.value - это значение на оси X в секундах
-        return formatTimeOnly(params.value);
+        // Применяем форматирование времени только для оси X
+        if (params.axisDimension === 'x') {
+          return formatTimeOnly(params.value);
+        }
+        // Для оси Y показываем обычное числовое значение
+        return parseFloat(params.value.toFixed(6)).toString();
       }
     }
   },

@@ -207,62 +207,62 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
 }, [dataSourceInfo, updateConfig.lastUpdateTime]);
 
 
-  // Инициализация данных графика
   useEffect(() => {
-    // Проверяем данные из localStorage
-    const savedData = localStorage.getItem(`chartData_${id}`);
-    if (savedData) {
-      try {
-        const parsedData = JSON.parse(savedData);
-        setChartData(parsedData.data || []);
-        setDataSourceInfo(parsedData.params || null);
-        
-        // Устанавливаем время последнего обновления
-        if (parsedData.data && parsedData.data.length > 0) {
-          const lastData = parsedData.data[parsedData.data.length - 1];
-          if (lastData.originalTime) {
-            try {
-              const date = new Date(lastData.originalTime);
-              if (!isNaN(date.getTime())) {
-                setUpdateConfig(prev => ({
-                  ...prev,
-                  lastUpdateTime: date
-                }));
-              }
-            } catch (e) {
-              console.error('Ошибка установки времени:', e);
+  // Проверяем данные из localStorage
+  const savedData = localStorage.getItem(`chartData_${id}`);
+  if (savedData) {
+    try {
+      const parsedData = JSON.parse(savedData);
+      setChartData(parsedData.data || []);
+      setDataSourceInfo(parsedData.params || null);
+      
+      // Устанавливаем время последнего обновления
+      if (parsedData.data && parsedData.data.length > 0) {
+        const lastData = parsedData.data[parsedData.data.length - 1];
+        if (lastData.originalTime) {
+          try {
+            const date = new Date(lastData.originalTime);
+            if (!isNaN(date.getTime())) {
+              setUpdateConfig(prev => ({
+                ...prev,
+                lastUpdateTime: date
+              }));
             }
+          } catch (e) {
+            console.error('Ошибка установки времени:', e);
           }
         }
-      } catch (e) {
-        console.error('Ошибка загрузки сохраненных данных:', e);
       }
+    } catch (e) {
+      console.error('Ошибка загрузки сохраненных данных:', e);
     }
+  }
+  
+  // Используем данные из props
+  if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
+    console.log('Обновление графика новыми данными:', data.initialData.length, 'точек');
+    setChartData(data.initialData);
     
-    // Используем данные из props
-    if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
-      setChartData(data.initialData);
-      
-      // Сохраняем в localStorage
-      localStorage.setItem(`chartData_${id}`, JSON.stringify({
-        data: data.initialData,
-        params: data.dataSourceInfo || null
-      }));
-    }
-    
-    if (data.dataSourceInfo) {
-      setDataSourceInfo(data.dataSourceInfo);
-    }
-    if (data.dataSourceInfo && data.dataSourceInfo.yScaleMode) {
-      setYScaleMode(data.dataSourceInfo.yScaleMode);
-    }
-    if (data.series) setChartSeries(data.series);
-    if (data.width && data.height) {
-      setNodeSize({ width: data.width, height: data.height });
-    }
-    
-    setIntervalInput(updateConfig.interval.toString());
-  }, [data.initialData, data.series, data.width, data.height, data.dataSourceInfo, id]);
+    // Сохраняем в localStorage
+    localStorage.setItem(`chartData_${id}`, JSON.stringify({
+      data: data.initialData,
+      params: data.dataSourceInfo || null
+    }));
+  }
+  
+  if (data.dataSourceInfo) {
+    setDataSourceInfo(data.dataSourceInfo);
+  }
+  if (data.dataSourceInfo && data.dataSourceInfo.yScaleMode) {
+    setYScaleMode(data.dataSourceInfo.yScaleMode);
+  }
+  if (data.series) setChartSeries(data.series);
+  if (data.width && data.height) {
+    setNodeSize({ width: data.width, height: data.height });
+  }
+  
+  setIntervalInput(updateConfig.interval.toString());
+}, [data.initialData, data.updateTimestamp, data.series, data.width, data.height, data.dataSourceInfo, id]);
 
   // Запуск/остановка опроса БД
   useEffect(() => {
@@ -789,24 +789,24 @@ const Graph = () => {
   // Глобальная функция для обновления данных узла
   useEffect(() => {
     // Экспортируем функцию для доступа из Sidebar
-    window.updateNodeData = (nodeId, data) => {
-      setNodes((nds) => 
-        nds.map((node) => {
-          if (node.id === nodeId && node.type === 'chartNode') {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                initialData: data,
-                dataSourceInfo: data.sourceInfo
-              }
-            };
+    window.updateNodeData = (nodeId, payload) => {
+  setNodes((nds) => 
+    nds.map((node) => {
+      if (node.id === nodeId && node.type === 'chartNode') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            initialData: payload.chartData || payload,  // Поддержка старого формата
+            dataSourceInfo: payload.sourceInfo,
+            updateTimestamp: payload.timestamp || Date.now()  // Для принудительного обновления
           }
-          return node;
-        })
-      );
-      //console.log(data)
-    };
+        };
+      }
+      return node;
+    })
+  );
+};
     
     return () => {
       delete window.updateNodeData;

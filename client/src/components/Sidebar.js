@@ -226,21 +226,18 @@ const Sidebar = ({
     };
     
     // Очищаем старые данные из localStorage
-if (selectedNode && selectedNode.id) {
-  localStorage.removeItem(`chartData_${selectedNode.id}`);
-}
+    if (selectedNode && selectedNode.id) {
+      localStorage.removeItem(`chartData_${selectedNode.id}`);
+    }
 
     // Используем глобальную функцию для обновления узла
+    // ОДИН вызов с правильной структурой данных
     if (window.updateNodeData && selectedNode) {
-      window.updateNodeData(selectedNode.id, formattedData);
-      
-      // Также сохраняем информацию об источнике
-      setTimeout(() => {
-        window.updateNodeData(selectedNode.id, {
-          ...formattedData,
-          sourceInfo // Добавляем метаданные
-        });
-      }, 100);
+      window.updateNodeData(selectedNode.id, {
+        chartData: formattedData,  // Массив данных
+        sourceInfo: sourceInfo,     // Метаданные
+        timestamp: Date.now()       // Для принудительного обновления
+      });
     }
     
     setChartParams(prev => ({
