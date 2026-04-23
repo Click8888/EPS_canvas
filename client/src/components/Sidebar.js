@@ -224,11 +224,6 @@ const Sidebar = ({
       yAxis: yAxisColumn,
       dataPoints: formattedData.length
     };
-    
-    // Очищаем старые данные из localStorage
-    if (selectedNode && selectedNode.id) {
-      localStorage.removeItem(`chartData_${selectedNode.id}`);
-    }
 
     // Используем глобальную функцию для обновления узла
     // ОДИН вызов с правильной структурой данных

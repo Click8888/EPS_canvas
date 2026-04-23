@@ -78,7 +78,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     }
     
     sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
-    sql += ` LIMIT 1000`
+    //sql += ` LIMIT 1000`
     console.log('Выполняем SQL:', sql);
     
     const response = await fetch('http://localhost:8080/api/execute-query', {
@@ -207,47 +207,11 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
 }, [dataSourceInfo, updateConfig.lastUpdateTime]);
 
 
-  useEffect(() => {
-  // Проверяем данные из localStorage
-  const savedData = localStorage.getItem(`chartData_${id}`);
-  if (savedData) {
-    try {
-      const parsedData = JSON.parse(savedData);
-      setChartData(parsedData.data || []);
-      setDataSourceInfo(parsedData.params || null);
-      
-      // Устанавливаем время последнего обновления
-      if (parsedData.data && parsedData.data.length > 0) {
-        const lastData = parsedData.data[parsedData.data.length - 1];
-        if (lastData.originalTime) {
-          try {
-            const date = new Date(lastData.originalTime);
-            if (!isNaN(date.getTime())) {
-              setUpdateConfig(prev => ({
-                ...prev,
-                lastUpdateTime: date
-              }));
-            }
-          } catch (e) {
-            console.error('Ошибка установки времени:', e);
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Ошибка загрузки сохраненных данных:', e);
-    }
-  }
-  
+    useEffect(() => {
   // Используем данные из props
   if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
     console.log('Обновление графика новыми данными:', data.initialData.length, 'точек');
     setChartData(data.initialData);
-    
-    // Сохраняем в localStorage
-    localStorage.setItem(`chartData_${id}`, JSON.stringify({
-      data: data.initialData,
-      params: data.dataSourceInfo || null
-    }));
   }
   
   if (data.dataSourceInfo) {
