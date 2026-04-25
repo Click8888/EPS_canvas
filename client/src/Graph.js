@@ -78,7 +78,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       sql += ` WHERE ${dataSourceInfo.xAxis} > '${lastTime}'`;
     }
     
-    sql += ` ORDER BY ${dataSourceInfo.xAxis} ASC`;
+    sql += ` ORDER BY ${dataSourceInfo.xAxis} DESC LIMIT 200`;
     //sql += ` LIMIT 1000`
     console.log('Выполняем SQL:', sql);
     
@@ -177,6 +177,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           // Сортируем по времени
           updatedData.sort((a, b) => a.time - b.time);
           return updatedData;
+          console.log("updatedData", updatedData.length)
         }
         
         return prev;
@@ -212,6 +213,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   // Используем данные из props
   if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
     console.log('Обновление графика новыми данными:', data.initialData.length, 'точек');
+    console.log("initialData ", data.initialData.length)
     setChartData(data.initialData);
   }
   
