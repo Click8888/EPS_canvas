@@ -85,7 +85,7 @@ const Sidebar = ({
     try {
       setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
       
-      const sql = `SELECT * FROM ${tableName} ORDER BY 1 ASC`; // Сортируем по первому столбцу
+      const sql = `SELECT * FROM ${tableName} ORDER BY 1 DESC LIMIT 200`; // Сортируем по первому столбцу
       
       const response = await fetch(`${API_BASE_URL}/execute-query`, {
         method: 'POST',
@@ -686,20 +686,6 @@ const Sidebar = ({
                                 ))}
                               </select>
                             </div>
-
-                            {/* Статистика данных */}
-                            {chartParams.tableData.length > 0 && (
-                              <div className="data-stats mb-3 p-2 bg-dark rounded" style={{ fontSize: '11px' }}>
-                                <div className="d-flex justify-content-between">
-                                  <span>Записей:</span>
-                                  <span className="badge bg-info">{chartParams.tableData.length}</span>
-                                </div>
-                                <div className="d-flex justify-content-between">
-                                  <span>Столбцов:</span>
-                                  <span className="badge bg-info">{chartParams.columns.length}</span>
-                                </div>
-                              </div>
-                            )}
                             
                             {/* Кнопки действий */}
                             <div className="d-grid gap-2">

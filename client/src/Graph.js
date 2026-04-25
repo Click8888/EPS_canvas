@@ -156,31 +156,10 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
       // Сортируем по времени
       formattedData.sort((a, b) => a.time - b.time);
       
-      // Обновляем данные графика - добавляем новые точки к существующим
-      setChartData(prev => {
-        // СОЗДАЕМ НАБОР ВСЕХ СУЩЕСТВУЮЩИХ ВРЕМЕННЫХ МЕТОК С ВЫСОКОЙ ТОЧНОСТЬЮ
-        const existingTimes = new Set();
-        prev.forEach(point => {
-          // Используем округление до 3 знаков для сравнения
-          existingTimes.add(Math.round(point.time * 1000) / 1000);
-        });
-        
-        // Фильтруем новые данные, оставляем только те, которых еще нет
-        const uniqueNewData = formattedData.filter(newPoint => {
-          const roundedTime = Math.round(newPoint.time * 1000) / 1000;
-          return !existingTimes.has(roundedTime);
-        });
-        
-        // Если есть уникальные новые данные, добавляем их
-        if (uniqueNewData.length > 0) {
-          const updatedData = [...prev, ...uniqueNewData];
-          // Сортируем по времени
-          updatedData.sort((a, b) => a.time - b.time);
-          return updatedData;
-          console.log("updatedData", updatedData.length)
-        }
-        
-        return prev;
+      // Обновляем данные графика
+      setChartData(() => {
+        formattedData.sort((a, b) => a.time - b.time);
+        return formattedData;
       });
       
       // Обновляем время последнего обновления
@@ -534,19 +513,9 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           <span>{data.label || 'График'}</span>
           {dataSourceInfo && (
             <span className="data-source-badge ms-2">
-              <i className="bi bi-database me-1"></i>
               {dataSourceInfo.table}: {dataSourceInfo.xAxis} → {dataSourceInfo.yAxis}
             </span>
           )}
-          <span className="data-count-badge ms-1">
-            {chartData.length} точек
-            {updateConfig.isAutoUpdate && (
-              <span className="ms-1" style={{ color: '#28a745' }}>
-                <i className="bi bi-arrow-clockwise me-1"></i>
-                авто
-              </span>
-            )}
-          </span>
           <span className="resize-indicator">
             Размер: {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
           </span>
@@ -939,7 +908,7 @@ const Graph = () => {
                       ...n,
                       data: {
                         ...n.data,
-                        initialData: [...(n.data.initialData || []), ...data]
+                        initialData: data
                       }
                     };
                   }
