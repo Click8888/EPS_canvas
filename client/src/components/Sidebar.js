@@ -31,26 +31,31 @@ const Sidebar = ({
     chartId: 'default-chart'
   });
 
-  // Новое состояние для параметров графика
+  // Состояние для управления линиями
+  const [lines, setLines] = useState([]);
+  const [nextLineId, setNextLineId] = useState(1);
+  const [tableColumnsCache, setTableColumnsCache] = useState({});
+
+  // Палитра цветов для линий
+  const COLOR_PALETTE = [
+    '#133592', '#e74c3c', '#2ecc71', '#f39c12', 
+    '#9b59b6', '#1abc9c', '#e67e22', '#3498db',
+    '#16a085', '#c0392b', '#8e44ad', '#d35400'
+  ];
+
+  // Функция для генерации случайного цвета из палитры
+  const getRandomColor = () => {
+    return COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)];
+  };
+
+  // Состояние для параметров графика
   const [chartParams, setChartParams] = useState({
     tables: [],
-    selectedTable: '',
-    tableData: [],
-    columns: [],
-    xAxisColumn: '',
-    yAxisColumn: '',
     isLoadingParams: false,
     paramError: ''
   });
 
-  // Загрузка таблиц при монтировании компонента
-  useEffect(() => {
-    if (selectedNode && selectedNode.type === 'dataSourceNode') {
-      loadTables();
-    }
-  }, [selectedNode]);
-
-  // Функция загрузки таблиц из БД
+   // Функция загрузки таблиц из БД
   const loadTables = useCallback(async () => {
     try {
       setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
@@ -78,15 +83,96 @@ const Sidebar = ({
     }
   }, []);
 
-    // Функция загрузки данных выбранной таблицы
-  const loadTableData = useCallback(async (tableName) => {
+
+  // Загрузка таблиц при монтировании компонента и при смене БД
+  useEffect(() => {
+    // Загружаем таблицы при первом рендере
+    loadTables();
+    
+    // Слушатель события смены БД
+    const handleDbConnectionChange = (event) => {
+      console.log('Обнаружена смену БД, перезагружаем таблицы...', event.detail);
+      
+      // Очищаем кэш столбцов при смене БД
+      setTableColumnsCache({});
+      
+      // Перезагружаем список таблиц из новой БД
+      loadTables();
+    };
+    
+    window.addEventListener('db-connection-changed', handleDbConnectionChange);
+    
+    // Очистка слушателя при размонтировании компонента
+    return () => {
+      window.removeEventListener('db-connection-changed', handleDbConnectionChange);
+    };
+  }, [loadTables]);
+
+
+  // Добавить новую линию
+  const addLine = () => {
+    const newLine = {
+      id: `line-${nextLineId}`,
+      name: `Линия ${nextLineId}`,
+      table: '',
+      xAxis: '',
+      yAxis: '',
+      color: getRandomColor(),
+      data: []
+    };
+    
+    setLines([...lines, newLine]);
+    setNextLineId(nextLineId + 1);
+  };
+
+  // Удалить линию
+  const removeLine = (lineId) => {
+    setLines(lines.filter(line => line.id !== lineId));
+  };
+
+  // Обновить параметры линии
+  const updateLine = (lineId, field, value) => {
+    setLines(lines.map(line => 
+      line.id === lineId ? { ...line, [field]: value } : line
+    ));
+  };
+
+  // Загрузить столбцы для выбранной таблицы линии
+  const loadColumnsForLine = async (lineId, tableName) => {
     if (!tableName) return;
     
+    // Проверяем кэш
+    if (tableColumnsCache[tableName]) {
+      const columns = tableColumnsCache[tableName];
+      const xAxis = columns.find(col => 
+        col.toLowerCase().includes('time') || 
+        col.toLowerCase().includes('date') ||
+        col.toLowerCase().includes('timestamp')
+      ) || columns[0] || '';
+      
+      const yAxis = columns.find(col => 
+        col.toLowerCase().includes('value') || 
+        col.toLowerCase().includes('current') ||
+        col.toLowerCase().includes('voltage') ||
+        col.toLowerCase().includes('measurement')
+      ) || columns[1] || '';
+      
+      setLines(lines.map(line => 
+        line.id === lineId 
+          ? { 
+              ...line, 
+              table: tableName,
+              xAxis: xAxis,
+              yAxis: yAxis,
+              name: yAxis || line.name
+            } 
+          : line
+      ));
+      return;
+    }
+    
     try {
-      setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
-      
-      const sql = `SELECT * FROM ${tableName} ORDER BY 1 DESC LIMIT 200`; // Сортируем по первому столбцу
-      
+      const sql = `SELECT * FROM ${tableName} LIMIT 1`;
       const response = await fetch(`${API_BASE_URL}/execute-query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,158 +186,189 @@ const Sidebar = ({
       
       if (data.length > 0) {
         const columns = Object.keys(data[0]);
-        setChartParams(prev => ({
-          ...prev,
-          selectedTable: tableName,
-          tableData: data,
-          columns: columns,
-          xAxisColumn: columns.find(col => 
-            col.toLowerCase().includes('time') || 
-            col.toLowerCase().includes('date') ||
-            col.toLowerCase().includes('timestamp')
-          ) || columns[0] || '',
-          yAxisColumn: columns.find(col => 
-            col.toLowerCase().includes('value') || 
-            col.toLowerCase().includes('current') ||
-            col.toLowerCase().includes('voltage') ||
-            col.toLowerCase().includes('measurement')
-          ) || columns[1] || '',
-          isLoadingParams: false
-        }));
-      } else {
-        // Если данных нет, получаем колонки из метаданных
-        const metaResponse = await fetch(`${API_BASE_URL}/metadata`);
-        const metadata = await metaResponse.json();
         
-        const table = metadata.metadata?.tables?.find(t => t.table_name === tableName);
-        if (table) {
-          const columns = table.columns.map(col => col.column_name);
-          setChartParams(prev => ({
-            ...prev,
-            selectedTable: tableName,
-            tableData: [],
-            columns: columns,
-            xAxisColumn: columns[0] || '',
-            yAxisColumn: columns[1] || '',
-            isLoadingParams: false
-          }));
-        }
+        // Сохраняем в кэш
+        setTableColumnsCache(prev => ({
+          ...prev,
+          [tableName]: columns
+        }));
+        
+        const xAxis = columns.find(col => 
+          col.toLowerCase().includes('time') || 
+          col.toLowerCase().includes('date') ||
+          col.toLowerCase().includes('timestamp')
+        ) || columns[0] || '';
+        
+        const yAxis = columns.find(col => 
+          col.toLowerCase().includes('value') || 
+          col.toLowerCase().includes('current') ||
+          col.toLowerCase().includes('voltage') ||
+          col.toLowerCase().includes('measurement')
+        ) || columns[1] || '';
+        
+        setLines(lines.map(line => 
+          line.id === lineId 
+            ? { 
+                ...line, 
+                table: tableName,
+                xAxis: xAxis,
+                yAxis: yAxis,
+                name: yAxis || line.name
+              } 
+            : line
+        ));
       }
+    } catch (err) {
+      console.error(`Ошибка загрузки столбцов для линии ${lineId}:`, err);
+    }
+  };
+
+  // Загрузить данные для конкретной линии
+  const loadLineData = async (line) => {
+    if (!line.table || !line.xAxis || !line.yAxis) {
+      return null;
+    }
+    
+    try {
+      const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
+      
+      const response = await fetch(`${API_BASE_URL}/execute-query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+
+      if (!response.ok) throw new Error('Ошибка загрузки данных');
+      
+      const result = await response.json();
+      const data = result.data || result;
+      
+      // Форматируем данные для графика
+      const formattedData = data
+        .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
+        .map((row) => {
+          const yValue = parseFloat(row[line.yAxis]);
+          const xValue = row[line.xAxis];
+          
+          let timeValue;
+          if (xValue instanceof Date) {
+            timeValue = xValue.getTime() / 1000;
+          } else if (typeof xValue === 'string') {
+            const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+            if (fullDateMatch) {
+              const date = new Date(xValue);
+              if (!isNaN(date.getTime())) {
+                timeValue = date.getTime() / 1000;
+              } else {
+                timeValue = parseFloat(xValue) || 0;
+              }
+            } else {
+              const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
+              if (timeMatch) {
+                const hours = parseInt(timeMatch[1]) || 0;
+                const minutes = parseInt(timeMatch[2]) || 0;
+                const seconds = parseInt(timeMatch[3]) || 0;
+                let milliseconds = 0;
+                if (timeMatch[4]) {
+                  const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+                  milliseconds = parseInt(msString, 10);
+                }
+                timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+              } else {
+                timeValue = parseFloat(xValue) || 0;
+              }
+            }
+          } else {
+            timeValue = parseFloat(xValue) || 0;
+          }
+          
+          return {
+            time: timeValue,
+            value: isNaN(yValue) ? 0 : yValue,
+            originalTime: xValue,
+            originalValue: row[line.yAxis],
+            seriesId: line.id,
+            timestamp: Date.now()
+          };
+        });
+      
+      // Сортируем по времени
+      formattedData.sort((a, b) => a.time - b.time);
+      
+      return formattedData;
       
     } catch (err) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: `Ошибка загрузки данных: ${err.message}`,
-        isLoadingParams: false
-      }));
+      console.error(`Ошибка загрузки данных для линии ${line.id}:`, err);
+      return null;
     }
-  }, []);
+  };
 
-// Функция для применения параметров графика к узлу
-  const applyChartParams = useCallback(() => {
-    if (!selectedNode || !chartParams.selectedTable) return;
-    
-    const { xAxisColumn, yAxisColumn, tableData } = chartParams;
-    
-    if (!xAxisColumn || !yAxisColumn) {
+  // Применить все линии к графику
+  const applyAllLines = async () => {
+    if (!selectedNode || lines.length === 0) {
       setChartParams(prev => ({
         ...prev,
-        paramError: 'Выберите столбцы для осей X и Y'
+        paramError: 'Добавьте хотя бы одну линию'
       }));
       return;
     }
     
-    // Форматируем данные для графика
-    const formattedData = tableData
-      .filter(row => row[xAxisColumn] != null && row[yAxisColumn] != null)
-      .map((row, index) => {
-        // Пытаемся преобразовать значения в числа для оси Y
-        const yValue = parseFloat(row[yAxisColumn]);
-        
-        // Для оси X: если это дата/время, преобразуем в секунды
-        let timeValue;
-        const xValue = row[xAxisColumn];
-        
-        if (xValue instanceof Date) {
-  timeValue = xValue.getTime() / 1000;
-} else if (typeof xValue === 'string') {
-  // СНАЧАЛА проверяем полную дату (приоритет!)
-  const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
-  if (fullDateMatch) {
-    const date = new Date(xValue);
-    if (!isNaN(date.getTime())) {
-      timeValue = date.getTime() / 1000;
-    } else {
-      timeValue = parseFloat(xValue) || 0;
+    // Проверяем, что все линии заполнены
+    const invalidLines = lines.filter(line => !line.table || !line.xAxis || !line.yAxis);
+    if (invalidLines.length > 0) {
+      setChartParams(prev => ({
+        ...prev,
+        paramError: 'Заполните все параметры для каждой линии'
+      }));
+      return;
     }
-  } else {
-    // ПОТОМ проверяем формат HH:MM:SS.mmm (только для времени без даты)
-    const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
-    if (timeMatch) {
-      const hours = parseInt(timeMatch[1]) || 0;
-      const minutes = parseInt(timeMatch[2]) || 0;
-      const seconds = parseInt(timeMatch[3]) || 0;
-      let milliseconds = 0;
-      if (timeMatch[4]) {
-        const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
-        milliseconds = parseInt(msString, 10);
-      }
-      timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-    } else {
-      // Просто число в виде строки
-      timeValue = parseFloat(xValue) || 0;
-    }
-  }
-}
-        
-        return {
-          time: timeValue,
-          value: isNaN(yValue) ? 0 : yValue,
-          originalTime: xValue,
-          originalValue: row[yAxisColumn],
-          seriesId: 'database',
+    
+    setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
+    
+    try {
+      // Загружаем данные для всех линий параллельно
+      const loadPromises = lines.map(line => loadLineData(line));
+      const allData = await Promise.all(loadPromises);
+      
+      // Обновляем линии с загруженными данными
+      const updatedLines = lines.map((line, index) => ({
+        ...line,
+        data: allData[index] || []
+      }));
+      
+      setLines(updatedLines);
+      
+      // Отправляем данные в график
+      if (window.updateNodeData && selectedNode) {
+        window.updateNodeData(selectedNode.id, {
+          lines: updatedLines,  // Массив всех линий с данными
           timestamp: Date.now()
-        };
-      });
-    
-    // Сортируем по времени
-    formattedData.sort((a, b) => a.time - b.time);
-    
-    // Создаем информацию об источнике данных
-    const sourceInfo = {
-      table: chartParams.selectedTable,
-      xAxis: xAxisColumn,
-      yAxis: yAxisColumn,
-      dataPoints: formattedData.length
-    };
-
-    // Используем глобальную функцию для обновления узла
-    // ОДИН вызов с правильной структурой данных
-    if (window.updateNodeData && selectedNode) {
-      window.updateNodeData(selectedNode.id, {
-        chartData: formattedData,  // Массив данных
-        sourceInfo: sourceInfo,     // Метаданные
-        timestamp: Date.now()       // Для принудительного обновления
-      });
+        });
+      }
+      
+      setChartParams(prev => ({
+        ...prev,
+        paramError: '',
+        isLoadingParams: false
+      }));
+      
+      console.log(`Загружено ${updatedLines.length} линий на график`);
+      
+    } catch (err) {
+      setChartParams(prev => ({
+        ...prev,
+        paramError: `Ошибка применения линий: ${err.message}`,
+        isLoadingParams: false
+      }));
     }
-    
-    setChartParams(prev => ({
-      ...prev,
-      paramError: '',
-      isLoadingParams: false
-    }));
-    
-    // Показываем уведомление
-    console.log(`Данные загружены: ${formattedData.length} точек`, sourceInfo);
-    
-  }, [selectedNode, chartParams]);
+  };
 
   // Функция запуска генерации
   const startGeneration = async () => {
     setGenerationState(prev => ({ ...prev, isLoading: true }));
     
     try {
-      const response = await fetch(`${API_BASE_URL}/generation/start`, {
+      const response = await fetch(`${API_BASE_URL}/start-generation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -259,17 +376,16 @@ const Sidebar = ({
           chartId: generationState.chartId
         })
       });
-
-      if (response.ok) {
-        setGenerationState(prev => ({ 
-          ...prev, 
-          isGenerating: true,
-          isLoading: false 
-        }));
-      }
-    } catch (error) {
-      console.error('Ошибка:', error);
-    } finally {
+      
+      if (!response.ok) throw new Error('Ошибка запуска генерации');
+      
+      setGenerationState(prev => ({
+        ...prev,
+        isGenerating: true,
+        isLoading: false
+      }));
+    } catch (err) {
+      console.error('Ошибка запуска генерации:', err);
       setGenerationState(prev => ({ ...prev, isLoading: false }));
     }
   };
@@ -279,121 +395,75 @@ const Sidebar = ({
     setGenerationState(prev => ({ ...prev, isLoading: true }));
     
     try {
-      const response = await fetch(`${API_BASE_URL}/generation/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+      const response = await fetch(`${API_BASE_URL}/stop-generation`, {
+        method: 'POST'
       });
-
-      if (response.ok) {
-        setGenerationState(prev => ({ 
-          ...prev, 
-          isGenerating: false,
-          isLoading: false 
-        }));
-      }
-    } catch (error) {
-      console.error('Ошибка:', error);
-    } finally {
+      
+      if (!response.ok) throw new Error('Ошибка остановки генерации');
+      
+      setGenerationState(prev => ({
+        ...prev,
+        isGenerating: false,
+        isLoading: false
+      }));
+    } catch (err) {
+      console.error('Ошибка остановки генерации:', err);
       setGenerationState(prev => ({ ...prev, isLoading: false }));
     }
   };
 
-  // Проверка статуса при загрузке
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/generation/status`);
-        if (response.ok) {
-          const data = await response.json();
-          setGenerationState(prev => ({ 
-            ...prev, 
-            isGenerating: data.isGenerating 
-          }));
-        }
-      } catch (error) {
-        console.error('Ошибка проверки статуса:', error);
-      }
-    };
-    
-    checkStatus();
-  }, []);
-
-  // Функция для безопасного изменения ширины с задержкой
-  const safeSetWidth = useCallback((newWidth) => {
-    if (resizeTimeoutRef.current) {
-      cancelAnimationFrame(resizeTimeoutRef.current);
-    }
-    
-    resizeTimeoutRef.current = requestAnimationFrame(() => {
-      setSidebarWidth(Math.max(minWidth, Math.min(maxWidth, newWidth)));
-      
-      setTimeout(() => {
-        if (newWidth <= collapseThreshold && !isCollapsed) {
-          setIsCollapsed(true);
-        } else if (newWidth > collapseThreshold && isCollapsed) {
-          setIsCollapsed(false);
-        }
-      }, 50);
-    });
-  }, [isCollapsed, collapseThreshold, minWidth, maxWidth]);
-
-  // Поэтапное сворачивание с анимацией
+  // Функция переключения сайдбара
   const toggleSidebar = useCallback(() => {
     if (isAnimating || isResizing) return;
     
     setIsAnimating(true);
     
     if (isCollapsed) {
-      const targetWidth = width;
-      const steps = [minWidth + 50, minWidth + 150, targetWidth];
-      
-      steps.forEach((stepWidth, index) => {
-        setTimeout(() => {
-          safeSetWidth(stepWidth);
-          if (index === steps.length - 1) {
-            setIsCollapsed(false);
-            setIsAnimating(false);
-          }
-        }, index * 100);
-      });
+      setIsCollapsed(false);
+      setSidebarWidth(width);
     } else {
-      const steps = [width * 0.7, width * 0.4, minWidth];
-      
-      steps.forEach((stepWidth, index) => {
-        setTimeout(() => {
-          safeSetWidth(stepWidth);
-          if (index === steps.length - 1) {
-            setIsCollapsed(true);
-            setIsAnimating(false);
-          }
-        }, index * 80);
-      });
+      setIsCollapsed(true);
+      setSidebarWidth(minWidth);
     }
-  }, [isCollapsed, isAnimating, width, minWidth, safeSetWidth, isResizing]);
+    
+    setTimeout(() => {
+      setIsAnimating(false);
+    }, 300);
+  }, [isCollapsed, isAnimating, isResizing, width, minWidth]);
 
-  // Обработчик клика на весь сайдбар в свернутом состоянии
+  // Обработчик клика по свернутому сайдбару
   const handleSidebarClick = useCallback((e) => {
-    if (isCollapsed && !e.target.closest('.sidebar-resizer')) {
+    if (isCollapsed && !isResizing && e.target.closest('.sidebar') && !e.target.closest('.sidebar-resizer')) {
       toggleSidebar();
     }
-  }, [isCollapsed, toggleSidebar]);
+  }, [isCollapsed, isResizing, toggleSidebar]);
 
-  // Оптимизированный обработчик ресайза
+  // Безопасная установка ширины
+  const safeSetWidth = useCallback((newWidth) => {
+    if (resizeTimeoutRef.current) {
+      cancelAnimationFrame(resizeTimeoutRef.current);
+    }
+    
+    resizeTimeoutRef.current = requestAnimationFrame(() => {
+      setSidebarWidth(newWidth);
+    });
+  }, []);
+
+  // Обработчик начала ресайза
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     
+    if (isAnimating) return;
+    
     setIsResizing(true);
-    lastUpdateTimeRef.current = Date.now();
-    
-    const startX = e.clientX;
-    const startWidth = isCollapsed ? minWidth : sidebarWidth;
-    
-    const effectiveStartWidth = isCollapsed ? minWidth : sidebarWidth;
     
     if (sidebarRef.current) {
       sidebarRef.current.classList.add('resizing-active');
     }
+    
+    const startX = e.clientX;
+    const effectiveStartWidth = isCollapsed ? minWidth : sidebarWidth;
     
     const handleMouseMove = (e) => {
       const currentTime = Date.now();
@@ -610,11 +680,19 @@ const Sidebar = ({
                       <span className="ms-2">{selectedNode.data.label}</span>
                     </div>
                     <div className="selected-node-details">
-                      {/* Блок выбора параметров графика из БД */}
-                      <div className="chart-params-selector mt-3">
-                        <h6 className="mb-2" style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                          <i className="bi bi-database me-1"></i> Выбор данных из БД
-                        </h6>
+                      {/* Блок управления линиями графика */}
+                      <div className="chart-lines-manager mt-3">
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <button
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={addLine}
+                            disabled={chartParams.isLoadingParams}
+                            title="Добавить новую линию"
+                          >
+                            <i className="bi bi-plus-circle me-1"></i>
+                            Добавить серию
+                          </button>
+                        </div>
                         
                         {chartParams.paramError && (
                           <div className="alert alert-danger alert-dismissible fade show py-1 px-2 mb-2" style={{ fontSize: '12px' }}>
@@ -628,97 +706,132 @@ const Sidebar = ({
                           </div>
                         )}
                         
-                        {/* Выбор таблицы */}
-                        <div className="mb-2">
-                          <label className="form-label" style={{ fontSize: '12px' }}>Таблица:</label>
-                          <div className="input-group input-group-sm">
-                            <select 
-                              className="form-select form-select-sm"
-                              value={chartParams.selectedTable}
-                              onChange={(e) => loadTableData(e.target.value)}
-                              disabled={chartParams.isLoadingParams}
+                        {/* Список линий */}
+                        {lines.length === 0 ? (
+                          <div className="text-center py-3" style={{ fontSize: '12px' }}>
+                            <i className="bi bi-info-circle me-1"></i>
+                            Для начала работы создайте серию
+                          </div>
+                        ) : (
+                          <div className="lines-list">
+                            {lines.map((line, index) => (
+                              <div key={line.id} className="line-item card mb-2" style={{ fontSize: '12px' }}>
+                                <div className="card-body p-2">
+                                  {/* Заголовок линии с цветом и удалением */}
+                                  <div className="d-flex justify-content-between align-items-center mb-2">
+                                    <div className="d-flex align-items-center flex-grow-1">
+                                      <input
+                                        type="color"
+                                        value={line.color}
+                                        onChange={(e) => updateLine(line.id, 'color', e.target.value)}
+                                        className="form-control form-control-color me-2"
+                                        style={{ width: '30px', height: '30px', padding: '2px' }}
+                                        title="Выбрать цвет"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={line.name}
+                                        onChange={(e) => updateLine(line.id, 'name', e.target.value)}
+                                        className="form-control form-control-sm"
+                                        placeholder="Название линии"
+                                        style={{ fontSize: '12px' }}
+                                      />
+                                    </div>
+                                    <button
+                                      className="btn btn-sm btn-outline-danger ms-2"
+                                      onClick={() => removeLine(line.id)}
+                                      title="Удалить линию"
+                                    >
+                                      <i className="bi bi-trash"></i>
+                                    </button>
+                                  </div>
+                                  
+                                  {/* Выбор таблицы */}
+                                  <div className="mb-2">
+                                    <label className="form-label mb-1" style={{ fontSize: '11px' }}>Таблица:</label>
+                                    <select 
+                                      className="form-select form-select-sm"
+                                      value={line.table}
+                                      onChange={(e) => loadColumnsForLine(line.id, e.target.value)}
+                                      disabled={chartParams.isLoadingParams}
+                                      style={{ fontSize: '11px' }}
+                                    >
+                                      <option value="">Выберите таблицу...</option>
+                                      {chartParams.tables.map(table => (
+                                        <option key={table} value={table}>{table}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  
+                                  {/* Выбор осей X и Y */}
+                                  {line.table && tableColumnsCache[line.table] && (
+                                    <>
+                                      <div className="mb-2">
+                                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось X:</label>
+                                        <select 
+                                          className="form-select form-select-sm"
+                                          value={line.xAxis}
+                                          onChange={(e) => updateLine(line.id, 'xAxis', e.target.value)}
+                                          disabled={chartParams.isLoadingParams}
+                                          style={{ fontSize: '11px' }}
+                                        >
+                                          <option value="">Выберите столбец...</option>
+                                          {tableColumnsCache[line.table]?.map(column => (
+                                            <option key={`${line.id}-x-${column}`} value={column}>{column}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      
+                                      <div className="mb-2">
+                                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось Y:</label>
+                                        <select 
+                                          className="form-select form-select-sm"
+                                          value={line.yAxis}
+                                          onChange={(e) => {
+                                            updateLine(line.id, 'yAxis', e.target.value);
+                                            // Автоматически обновляем название линии
+                                            if (e.target.value && line.name === `Линия ${line.id.split('-')[1]}`) {
+                                              updateLine(line.id, 'name', e.target.value);
+                                            }
+                                          }}
+                                          disabled={chartParams.isLoadingParams}
+                                          style={{ fontSize: '11px' }}
+                                        >
+                                          <option value="">Выберите столбец...</option>
+                                          {tableColumnsCache[line.table]?.map(column => (
+                                            <option key={`${line.id}-y-${column}`} value={column}>{column}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Кнопка применения */}
+                        {lines.length > 0 && (
+                          <div className="d-grid gap-2 mt-3">
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={applyAllLines}
+                              disabled={chartParams.isLoadingParams || lines.length === 0}
                             >
-                              <option value="">Выберите таблицу...</option>
-                              {chartParams.tables.map(table => (
-                                <option key={table} value={table}>{table}</option>
-                              ))}
-                            </select>
-                            <button 
-                              className="btn btn-outline-secondary btn-sm"
-                              onClick={loadTables}
-                              disabled={chartParams.isLoadingParams}
-                              title="Обновить список таблиц"
-                            >
-                              <i className="bi bi-arrow-clockwise"></i>
+                              {chartParams.isLoadingParams ? (
+                                <>
+                                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                                  Загрузка...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="bi bi-check-circle me-1"></i>
+                                  Применить параметры ({lines.length})
+                                </>
+                              )}
                             </button>
                           </div>
-                        </div>
-                        
-                        {/* Выбор столбцов для осей */}
-                        {chartParams.columns.length > 0 && (
-                          <>
-                            <div className="mb-2">
-                              <label className="form-label" style={{ fontSize: '12px' }}>Ось X (Время):</label>
-                              <select 
-                                className="form-select form-select-sm"
-                                value={chartParams.xAxisColumn}
-                                onChange={(e) => setChartParams(prev => ({ ...prev, xAxisColumn: e.target.value }))}
-                                disabled={chartParams.isLoadingParams}
-                              >
-                                <option value="">Выберите столбец...</option>
-                                {chartParams.columns.map(column => (
-                                  <option key={`x-${column}`} value={column}>{column}</option>
-                                ))}
-                              </select>
-                            </div>
-                            
-                            <div className="mb-3">
-                              <label className="form-label" style={{ fontSize: '12px' }}>Ось Y (Значение):</label>
-                              <select 
-                                className="form-select form-select-sm"
-                                value={chartParams.yAxisColumn}
-                                onChange={(e) => setChartParams(prev => ({ ...prev, yAxisColumn: e.target.value }))}
-                                disabled={chartParams.isLoadingParams}
-                              >
-                                <option value="">Выберите столбец...</option>
-                                {chartParams.columns.map(column => (
-                                  <option key={`y-${column}`} value={column}>{column}</option>
-                                ))}
-                              </select>
-                            </div>
-                            
-                            {/* Кнопки действий */}
-                            <div className="d-grid gap-2">
-                              <button
-                                className="btn btn-primary btn-sm"
-                                onClick={applyChartParams}
-                                disabled={chartParams.isLoadingParams || !chartParams.xAxisColumn || !chartParams.yAxisColumn}
-                              >
-                                {chartParams.isLoadingParams ? (
-                                  <>
-                                    <span className="spinner-border spinner-border-sm me-1" role="status"></span>
-                                    Загрузка...
-                                  </>
-                                ) : (
-                                  <>
-                                    <i className="bi bi-check-circle me-1"></i>
-                                    Применить параметры
-                                  </>
-                                )}
-                              </button>
-                              
-                              {chartParams.selectedTable && (
-                                <button
-                                  className="btn btn-outline-secondary btn-sm"
-                                  onClick={() => loadTableData(chartParams.selectedTable)}
-                                  disabled={chartParams.isLoadingParams}
-                                >
-                                  <i className="bi bi-arrow-clockwise me-1"></i>
-                                  Обновить данные
-                                </button>
-                              )}
-                            </div>
-                          </>
                         )}
                         
                         {/* Индикатор загрузки */}
@@ -735,9 +848,6 @@ const Sidebar = ({
                   </div>
                 </div>
               )}
-
-              {/* Быстрые действия */}
-              {/* ... существующий код ... */}
             </div>
           </>
         )}

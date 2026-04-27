@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
 import {
   TitleComponent,
@@ -197,6 +197,18 @@ const defaultOption = {
   animation: false,
   animationDuration: 0,
   animationEasing: 'linear',
+  // legend: {
+  //   show: false,  // По умолчанию скрыта, будет показана при множественных линиях
+  //   data: [],
+  //   top: 10,
+  //   left: 'center',
+  //   textStyle: {
+  //     color: '#fff',
+  //     fontSize: 12
+  //   },
+  //   itemWidth: 25,
+  //   itemHeight: 14
+  // },
   tooltip: {
     trigger: 'axis',
     axisPointer: { type: 'cross' },
@@ -322,6 +334,7 @@ const defaultOption = {
 const Chart = ({ 
   activeGraphUpdate,
   chartData, 
+  lines = [],
   width = '100%', 
   height = '600px',
 }) => {
@@ -337,58 +350,19 @@ const Chart = ({
   // ДОБАВИТЬ: Получаем devicePixelRatio для высокого качества
   const dpr = window.devicePixelRatio || 1;
 
-  // Преобразуем данные в формат, понятный ECharts
-  const formatDataForECharts = (data) => {
-    if (!data || !Array.isArray(data)) return { time: [], values: [] };
+  // Преобразуем данные одной линии в формат ECharts
+const formatLineDataForECharts = (data) => {
+  if (!data || !Array.isArray(data)) return [];
 
-    // Ограничиваем отображение до последних 200 точек
-    const limitedData = data.length > 200 ? data.slice(-200) : data;
+  // Ограничиваем отображение до последних 200 точек
+  const limitedData = data.length > 200 ? data.slice(-200) : data;
+  const formattedData = [];
 
-    const time = [];
-    const values = [];
-
-    limitedData.forEach(item => {
-      if (item && typeof item === 'object') {
-        let timeValue;
-        
-        // Извлекаем время
-        if (item.originalTime !== undefined) {
-          timeValue = item.originalTime;
-        } else if (item.time !== undefined) {
-          timeValue = item.time;
-        } else {
-          return;
-        }
-        
-        // Преобразуем время в секунды для числовой оси
-        const timeInSeconds = convertTimeToSeconds(timeValue);
-        time.push(timeInSeconds);
-        
-        // Извлекаем значение
-        if (item.value !== undefined) {
-          values.push(item.value);
-        }
-      }
-    });
-
-    return { time, values };
-  };
-
-  // Функция для расчета диапазона Y на основе видимых данных X
-const calculateYRange = (data, xMin, xMax) => {
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    return { min: 0, max: 100 };
-  }
-
-  let minY = Infinity;
-  let maxY = -Infinity;
-
-if (xMin !== null && xMax !== null) {
-  // Только видимые данные в диапазоне X
-  data.forEach(item => {
+  limitedData.forEach(item => {
     if (item && typeof item === 'object') {
       let timeValue;
       
+      // Извлекаем время
       if (item.originalTime !== undefined) {
         timeValue = item.originalTime;
       } else if (item.time !== undefined) {
@@ -397,30 +371,91 @@ if (xMin !== null && xMax !== null) {
         return;
       }
       
+      // Преобразуем время в секунды для числовой оси
       const timeInSeconds = convertTimeToSeconds(timeValue);
       
-      // Проверяем, попадает ли точка в видимый диапазон X
-      if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
-        const value = parseFloat(item.value);
-        if (!isNaN(value)) {
-          minY = Math.min(minY, value);
-          maxY = Math.max(maxY, value);
+      // Извлекаем значение
+      if (item.value !== undefined) {
+        formattedData.push([timeInSeconds, item.value]);
+      }
+    }
+  });
+
+  return formattedData;
+};
+
+// Преобразуем все линии в формат ECharts
+const formatAllLinesForECharts = (lines) => {
+  if (!lines || !Array.isArray(lines) || lines.length === 0) {
+    // Fallback на старый формат для обратной совместимости
+    if (chartData && Array.isArray(chartData)) {
+      return [{
+        name: 'Данные',
+        color: '#1f02c3',
+        data: formatLineDataForECharts(chartData)
+      }];
+    }
+    return [];
+  }
+
+  return lines.map(line => ({
+    name: line.name || 'Без названия',
+    color: line.color || '#1f02c3',
+    data: formatLineDataForECharts(line.data || [])
+  }));
+};
+
+// Функция для расчета диапазона Y на основе видимых данных X для всех линий
+const calculateYRange = (lines, xMin, xMax) => {
+  // Fallback на старый формат для обратной совместимости
+  if (!lines || !Array.isArray(lines) || lines.length === 0) {
+    if (chartData && Array.isArray(chartData)) {
+      return calculateYRangeForSingleLine(chartData, xMin, xMax);
+    }
+    return { min: 0, max: 100 };
+  }
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  // Проходим по всем линиям
+  lines.forEach(line => {
+    if (!line.data || !Array.isArray(line.data)) return;
+    
+    line.data.forEach(item => {
+      if (item && typeof item === 'object') {
+        let timeValue;
+        
+        if (item.originalTime !== undefined) {
+          timeValue = item.originalTime;
+        } else if (item.time !== undefined) {
+          timeValue = item.time;
+        } else {
+          return;
+        }
+        
+        const timeInSeconds = convertTimeToSeconds(timeValue);
+        
+        // Проверяем, попадает ли точка в видимый диапазон X
+        if (xMin !== null && xMax !== null) {
+          if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
+            const value = parseFloat(item.value);
+            if (!isNaN(value)) {
+              minY = Math.min(minY, value);
+              maxY = Math.max(maxY, value);
+            }
+          }
+        } else {
+          // Если диапазон X не определен, берем все данные
+          const value = parseFloat(item.value);
+          if (!isNaN(value)) {
+            minY = Math.min(minY, value);
+            maxY = Math.max(maxY, value);
+          }
         }
       }
-    }
+    });
   });
-} else {
-  // Fallback: все данные (когда диапазон X не определен)
-  data.forEach(item => {
-    if (item && typeof item === 'object' && item.value !== undefined) {
-      const value = parseFloat(item.value);
-      if (!isNaN(value)) {
-        minY = Math.min(minY, value);
-        maxY = Math.max(maxY, value);
-      }
-    }
-  });
-}
 
   // Если не нашли данных
   if (minY === Infinity || maxY === -Infinity) {
@@ -437,6 +472,59 @@ if (xMin !== null && xMax !== null) {
   };
 };
 
+// Вспомогательная функция для одной линии (для обратной совместимости)
+const calculateYRangeForSingleLine = (data, xMin, xMax) => {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return { min: 0, max: 100 };
+  }
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  data.forEach(item => {
+    if (item && typeof item === 'object') {
+      let timeValue;
+      
+      if (item.originalTime !== undefined) {
+        timeValue = item.originalTime;
+      } else if (item.time !== undefined) {
+        timeValue = item.time;
+      } else {
+        return;
+      }
+      
+      const timeInSeconds = convertTimeToSeconds(timeValue);
+      
+      if (xMin !== null && xMax !== null) {
+        if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
+          const value = parseFloat(item.value);
+          if (!isNaN(value)) {
+            minY = Math.min(minY, value);
+            maxY = Math.max(maxY, value);
+          }
+        }
+      } else {
+        const value = parseFloat(item.value);
+        if (!isNaN(value)) {
+          minY = Math.min(minY, value);
+          maxY = Math.max(maxY, value);
+        }
+      }
+    }
+  });
+
+  if (minY === Infinity || maxY === -Infinity) {
+    return { min: 0, max: 100 };
+  }
+
+  const range = maxY - minY || 1;
+  const padding = range * 0.2;
+  
+  return {
+    min: minY - padding,
+    max: maxY + padding
+  };
+};
 
   // Инициализация экземпляра графика
 useEffect(() => {
@@ -477,41 +565,60 @@ useEffect(() => {
   if (!chartInstance) return;
 
   const handleDataZoomEvent = (params) => {
-    if (params.batch && params.batch.length > 0) {
-      const xAxisZoom = params.batch.find(b => b.dataZoomId && b.xAxisIndex !== undefined);
-      
-      if (xAxisZoom) {
-        // Получаем текущий диапазон X
-        const option = chartInstance.getOption();
-        if (option && option.xAxis && option.xAxis[0]) {
-          const xAxis = option.xAxis[0];
-          const xData = xAxis.data || [];
-          
-          // Сохраняем текущий диапазон X
-          if (xAxisZoom.startValue !== undefined && xAxisZoom.endValue !== undefined) {
-            setCurrentXRange({
-              min: xAxisZoom.startValue,
-              max: xAxisZoom.endValue
-            });
-          } else if (xAxisZoom.start !== undefined && xAxisZoom.end !== undefined) {
-            // Если используются проценты, конвертируем в значения
-            const allData = chartInstance.getOption().series[0].data || [];
-            if (allData.length > 0) {
-              const startIdx = Math.floor((xAxisZoom.start / 100) * allData.length);
-              const endIdx = Math.ceil((xAxisZoom.end / 100) * allData.length);
-              
-              if (allData[startIdx] && allData[endIdx - 1]) {
-                setCurrentXRange({
-                  min: allData[startIdx][0],
-                  max: allData[endIdx - 1][0]
-                });
-              }
+  if (params.batch && params.batch.length > 0) {
+    const xAxisZoom = params.batch.find(b => b.dataZoomId && b.xAxisIndex !== undefined);
+    
+    if (xAxisZoom) {
+      // Получаем текущий диапазон X
+      const option = chartInstance.getOption();
+      if (option && option.xAxis && option.xAxis[0]) {
+        let newXRange = null;
+        
+        // Сохраняем текущий диапазон X
+        if (xAxisZoom.startValue !== undefined && xAxisZoom.endValue !== undefined) {
+          newXRange = {
+            min: xAxisZoom.startValue,
+            max: xAxisZoom.endValue
+          };
+        } else if (xAxisZoom.start !== undefined && xAxisZoom.end !== undefined) {
+          // Если используются проценты, конвертируем в значения
+          const allData = chartInstance.getOption().series[0].data || [];
+          if (allData.length > 0) {
+            const startIdx = Math.floor((xAxisZoom.start / 100) * allData.length);
+            const endIdx = Math.ceil((xAxisZoom.end / 100) * allData.length);
+            
+            if (allData[startIdx] && allData[endIdx - 1]) {
+              newXRange = {
+                min: allData[startIdx][0],
+                max: allData[endIdx - 1][0]
+              };
             }
           }
         }
+        
+        //Обновляем currentXRange и ось Y
+        if (newXRange) {
+          setCurrentXRange(newXRange);
+          
+          // Вычисляем новый диапазон Y для видимых данных
+          const yRange = calculateYRange(
+            lines.length > 0 ? lines : null,
+            newXRange.min,
+            newXRange.max
+          );
+          
+          // Обновляем только ось Y
+          chartInstance.setOption({
+            yAxis: {
+              min: yRange.min,
+              max: yRange.max
+            }
+          }, false, false);
+        }
       }
     }
-  };
+  }
+};
 
   chartInstance.on('dataZoom', handleDataZoomEvent);
 
@@ -556,39 +663,112 @@ useEffect(() => {
 
 // Обновление данных графика
 useEffect(() => {
-  if (!chartInstance || !chartData) return;
+  if (!chartInstance) return;
 
-  const formattedData = formatDataForECharts(chartData);
+  // Форматируем данные всех линий
+  const formattedLines = formatAllLinesForECharts(lines);
+  
+  // Если нет линий, пробуем использовать старый формат chartData
+  if (formattedLines.length === 0 && chartData) {
+    const fallbackLine = {
+      name: 'Данные',
+      color: '#1f02c3',
+      data: formatLineDataForECharts(chartData)
+    };
+    formattedLines.push(fallbackLine);
+  }
+  
+  // Если все еще нет данных, выходим
+  if (formattedLines.length === 0) return;
   
   // Проверяем, взаимодействует ли пользователь с графиком
   if (userInteractingRef.current) {
-    // 1: Пользователь взаимодействует - обновляем ТОЛЬКО данные
-    const updateOption = {
+  // РЕЖИМ 1: Пользователь взаимодействует - обновляем данные И ось Y
+  
+  // Вычисляем диапазон Y для текущего видимого диапазона X
+  const yRange = calculateYRange(
+    lines.length > 0 ? lines : null,
+    currentXRange?.min || null,
+    currentXRange?.max || null
+  );
+  
+  const updateOption = {
+    animation: false,
+    yAxis: {
+      min: yRange.min,
+      max: yRange.max
+    },
+    series: formattedLines.map(line => ({
       animation: false,
-      series: [
-        {
-          animation: false,
-          data: formattedData.values.map((value, index) => [formattedData.time[index], value])
-        }
-      ]
-    };
-    
-    if (chartInstance && typeof chartInstance.setOption === 'function') {
-      try {
-        chartInstance.setOption(updateOption, false, false);
-      } catch (error) {
-        console.error('Ошибка обновления графика:', error);
-      }
+      data: line.data
+    }))
+  };
+  
+  if (chartInstance && typeof chartInstance.setOption === 'function') {
+    try {
+      chartInstance.setOption(updateOption, false, false);
+    } catch (error) {
+      console.error('Ошибка обновления графика:', error);
     }
-    
-  } else {
+  }
+  
+} else {
     // РЕЖИМ 2: Пользователь НЕ взаимодействует - обновляем данные И оси
+    
+    // Собираем все временные точки из всех линий для определения диапазона X
+    const allTimePoints = [];
+    formattedLines.forEach(line => {
+      line.data.forEach(point => {
+        if (point && point[0] !== undefined) {
+          allTimePoints.push(point[0]);
+        }
+      });
+    });
+    
     const newOption = {
+      ...defaultOption,
       animation: false,
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
+        formatter: function(params) {
+          if (!params || params.length === 0) return '';
+          
+          const timeValue = params[0].value[0];
+          const formattedTime = formatTimeOnly(timeValue);
+          
+          let tooltipContent = `Время: ${formattedTime}<br/>`;
+          
+          // Добавляем все линии в tooltip
+          params.forEach(param => {
+            const value = param.value[1];
+            const color = param.color;
+            const seriesName = param.seriesName;
+            tooltipContent += `<span style="display:inline-block;width:10px;height:10px;background-color:${color};border-radius:50%;margin-right:5px;"></span>`;
+            tooltipContent += `${seriesName}: ${parseFloat(value.toFixed(6)).toString()}<br/>`;
+          });
+          
+          return tooltipContent;
+        }
+      },
+      // Добавляем настройки для axisPointer на осях
+      axisPointer: {
+        link: { xAxisIndex: 'all' },
+        label: {
+          formatter: function(params) {
+            // Применяем форматирование времени только для оси X
+            if (params.axisDimension === 'x') {
+              return formatTimeOnly(params.value);
+            }
+            // Для оси Y показываем обычное числовое значение
+            return parseFloat(params.value.toFixed(6)).toString();
+          }
+        }
+      },
       xAxis: {
         ...defaultOption.xAxis,
         animation: false,
-        data: formattedData.time,
+        data: allTimePoints,
         min: function(value) {
           const range = value.max - value.min;
           return value.min - range * 0.1;
@@ -609,29 +789,68 @@ useEffect(() => {
         min: function(value) {
           // Используем calculateYRange для определения диапазона
           const yRange = calculateYRange(
-            chartData, 
+            lines.length > 0 ? lines : null,
             currentXRange?.min || null, 
-            currentXRange?.max || null, 
+            currentXRange?.max || null
           );
           return yRange.min;
         },
         max: function(value) {
           const yRange = calculateYRange(
-            chartData, 
+            lines.length > 0 ? lines : null,
             currentXRange?.min || null, 
-            currentXRange?.max || null, 
+            currentXRange?.max || null
           );
           return yRange.max;
         }
       },
-      series: [
-        {
-          ...defaultOption.series[0],
-          animation: false,
-          data: formattedData.values.map((value, index) => [formattedData.time[index], value]),
-          name: 'Точка'
-        }
-      ]
+      dataZoom: [
+    {
+      show: true,
+      type: 'inside',
+      filterMode: 'none',
+      xAxisIndex: [0],
+      zoomOnMouseWheel: true,
+      moveOnMouseMove: true,
+      moveOnMouseWheel: false,
+      preventDefaultMouseMove: true
+    }
+  ],
+  grid: {
+    left: '3%',
+    right: '4%',
+    bottom: '5%',
+    top: '10%',
+    containLabel: true
+  },
+      // legend: {
+      //   show: formattedLines.length > 1,  // Показываем легенду только если больше одной линии
+      //   data: formattedLines.map(line => line.name),
+      //   top: 10,
+      //   left: 'center',
+      //   textStyle: {
+      //     color: '#fff',
+      //     fontSize: 12
+      //   },
+      //   itemWidth: 25,
+      //   itemHeight: 14
+      // },
+      series: formattedLines.map(line => ({
+        name: line.name,
+        type: 'line',
+        showSymbol: false,
+        clip: true,
+        connectNulls: false,
+        animation: false,
+        itemStyle: {
+          color: line.color
+        },
+        lineStyle: {
+          color: line.color,
+          width: 2.2
+        },
+        data: line.data
+      }))
     };
     
     setOption(newOption);
@@ -645,7 +864,7 @@ useEffect(() => {
     }
   }
 
-}, [chartData, activeGraphUpdate, chartInstance, currentXRange]);
+}, [chartData, lines, activeGraphUpdate, chartInstance, currentXRange]);
 
   return (
     <div
@@ -660,7 +879,7 @@ useEffect(() => {
       <ReactECharts
         ref={chartRef}
         option={option}
-        notMerge={false}
+        notMerge={true}
         lazyUpdate={true}
         autoResize
         style={{ 

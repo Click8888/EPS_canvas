@@ -63,6 +63,11 @@ export default function Navbar() {
       } else {
         setSuccessMsg('Подключение установлено!');
         setStatus({ connected: true, config: data.config });
+        // Генерируем событие для обновления таблиц в Sidebar
+        window.dispatchEvent(new CustomEvent('db-connection-changed', {
+          detail: { config: data.config }
+        }));
+
         setTimeout(() => closeModal(), 1500);
       }
     } catch {

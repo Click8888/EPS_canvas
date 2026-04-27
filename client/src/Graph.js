@@ -38,6 +38,7 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   const [activeGraphUpdate, setActiveGraphUpdate] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [chartSeries, setChartSeries] = useState([]);
+  const [additionalSeries, setAdditionalSeries] = useState([]); // НОВОЕ: дополнительные линии
   const [nodeSize, setNodeSize] = useState({ width: 600, height: 1200 });
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
@@ -188,6 +189,123 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
 }, [dataSourceInfo, updateConfig.lastUpdateTime]);
 
 
+// Функция для загрузки данных всех линий из БД (автообновление)
+const fetchLinesDataFromDB = useCallback(async () => {
+  if (!data.lines || data.lines.length === 0) {
+    console.log('Нет линий для обновления');
+    return;
+  }
+
+  try {
+    setIsUpdating(true);
+    
+    // Загружаем данные для всех линий параллельно
+    const loadPromises = data.lines.map(async (line) => {
+      if (!line.table || !line.xAxis || !line.yAxis) {
+        return { ...line, data: [] };
+      }
+      
+      const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
+      
+      try {
+        const response = await fetch('http://localhost:8080/api/execute-query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+
+        if (!response.ok) throw new Error(`Ошибка загрузки данных для линии ${line.name}`);
+        
+        const result = await response.json();
+        const dbData = result.data || result;
+        
+        // Форматируем данные для графика
+        const formattedData = dbData
+          .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
+          .map((row) => {
+            const yValue = parseFloat(row[line.yAxis]);
+            const xValue = row[line.xAxis];
+            
+            let timeValue;
+            if (xValue instanceof Date) {
+              timeValue = xValue.getTime() / 1000;
+            } else if (typeof xValue === 'string') {
+              const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+              if (fullDateMatch) {
+                const date = new Date(xValue);
+                if (!isNaN(date.getTime())) {
+                  timeValue = date.getTime() / 1000;
+                } else {
+                  timeValue = parseFloat(xValue) || 0;
+                }
+              } else {
+                const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
+                if (timeMatch) {
+                  const hours = parseInt(timeMatch[1]) || 0;
+                  const minutes = parseInt(timeMatch[2]) || 0;
+                  const seconds = parseInt(timeMatch[3]) || 0;
+                  let milliseconds = 0;
+                  if (timeMatch[4]) {
+                    const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+                    milliseconds = parseInt(msString, 10);
+                  }
+                  timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+                } else {
+                  timeValue = parseFloat(xValue) || 0;
+                }
+              }
+            } else {
+              timeValue = parseFloat(xValue) || 0;
+            }
+            
+            return {
+              time: timeValue,
+              value: isNaN(yValue) ? 0 : yValue,
+              originalTime: xValue,
+              originalValue: row[line.yAxis],
+              seriesId: line.id,
+              timestamp: Date.now()
+            };
+          });
+        
+        formattedData.sort((a, b) => a.time - b.time);
+        
+        return { ...line, data: formattedData };
+      } catch (err) {
+        console.error(`Ошибка загрузки данных для линии ${line.name}:`, err);
+        return { ...line, data: [] };
+      }
+    });
+    
+    const updatedLines = await Promise.all(loadPromises);
+    
+    // Обновляем узел с новыми данными
+    setNodes((nds) => 
+      nds.map((node) => {
+        if (node.id === id && node.type === 'chartNode') {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              lines: updatedLines,
+              updateTimestamp: Date.now()
+            }
+          };
+        }
+        return node;
+      })
+    );
+    
+    setIsUpdating(false);
+    console.log(`Автообновление: обновлены данные для ${updatedLines.length} линий`);
+    
+  } catch (err) {
+    console.error('Ошибка автообновления линий:', err);
+    setIsUpdating(false);
+  }
+}, [data.lines, id, setNodes]);
+
+
     useEffect(() => {
   // Используем данные из props
   if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
@@ -203,37 +321,64 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
     setYScaleMode(data.dataSourceInfo.yScaleMode);
   }
   if (data.series) setChartSeries(data.series);
+  
+  // Обработка дополнительных серий
+  if (data.additionalSeries && Array.isArray(data.additionalSeries)) {
+    setAdditionalSeries(data.additionalSeries);
+  }
+
   if (data.width && data.height) {
     setNodeSize({ width: data.width, height: data.height });
   }
   
   setIntervalInput(updateConfig.interval.toString());
-}, [data.initialData, data.updateTimestamp, data.series, data.width, data.height, data.dataSourceInfo, id]);
+}, [data.initialData, data.updateTimestamp, data.series, data.width, data.height, data.dataSourceInfo, data.additionalSeries, data.lines, id]);
 
   // Запуск/остановка опроса БД
-  useEffect(() => {
-    if (updateConfig.isAutoUpdate && dataSourceInfo) {
-      // Первый запрос сразу
-      fetchDataFromDB();
-      
-      // Затем запускаем интервал
-      const interval = setInterval(() => {
-        fetchDataFromDB();
-      }, updateConfig.interval);
-      
-      setPollingIntervalId(interval);
-      
-      return () => {
-        if (interval) {
-          clearInterval(interval);
-        }
-      };
-    } else if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
+useEffect(() => {
+  if (updateConfig.isAutoUpdate) {
+    // Определяем, какую функцию использовать для автообновления
+    const hasLines = data.lines && data.lines.length > 0;
+    const hasDataSource = dataSourceInfo && dataSourceInfo.table;
+    
+    let fetchFunction = null;
+    
+    if (hasLines) {
+      // Приоритет у множественных линий
+      fetchFunction = fetchLinesDataFromDB;
+      console.log('Автообновление: используется режим множественных линий');
+    } else if (hasDataSource) {
+      // Fallback на старый формат
+      fetchFunction = fetchDataFromDB;
+      console.log('Автообновление: используется режим одного источника данных');
     }
+    
+    if (!fetchFunction) {
+      console.log('Автообновление: нет данных для обновления');
+      return;
+    }
+    
+    // Первый запрос сразу
+    fetchFunction();
+    
+    // Затем запускаем интервал
+    const interval = setInterval(() => {
+      fetchFunction();
+    }, updateConfig.interval);
+    
+    setPollingIntervalId(interval);
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  } else if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
+    setPollingIntervalId(null);
+  }
 
-  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo]);
+}, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, data.lines, fetchDataFromDB, fetchLinesDataFromDB]);
 
 
   // Тоггл автоматического обновления
@@ -527,10 +672,10 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
           <button
             className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}
-            disabled={!dataSourceInfo}
-            title={dataSourceInfo ? 
+            disabled={!dataSourceInfo && (!data.lines || data.lines.length === 0)}
+            title={(dataSourceInfo || (data.lines && data.lines.length > 0)) ? 
               (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД") : 
-              "Сначала выберите источник данных"}
+              "Сначала выберите источник данных или добавьте линии"}
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
@@ -565,6 +710,8 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
             <Chart 
               activeGraphUpdate={activeGraphUpdate}
               chartData={chartData}
+              lines ={data.lines}
+              additionalSeries={additionalSeries}
               width={nodeSize.width}
               height={nodeSize.height - 50}
               yScaleMode={yScaleMode}
@@ -788,6 +935,8 @@ const Graph = () => {
             ...node.data,
             initialData: payload.chartData || payload,  // Поддержка старого формата
             dataSourceInfo: payload.sourceInfo,
+            additionalSeries: payload.additionalSeries || [], // дополнительные серии
+            lines: payload.lines || [],
             updateTimestamp: payload.timestamp || Date.now()  // Для принудительного обновления
           }
         };
