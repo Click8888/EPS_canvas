@@ -812,3 +812,221 @@
   margin-left: 10px;
 }
 
+/* ============================================
+   РАДИАЛЬНЫЙ ГРАФИК - СТИЛИ
+   ============================================ */
+
+.radial-chart-node {
+  background: #1e1e1e;
+  border: 2px solid #4dabf7;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.radial-chart-node.resizing {
+  opacity: 0.8;
+}
+
+.radial-chart-node .chart-node-header {
+  padding: 4px 8px;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  height: 40px;
+}
+
+.radial-chart-node .chart-node-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.radial-chart-node .chart-node-title i {
+  font-size: 16px;
+  color: #4dabf7;
+}
+
+.radial-chart-node .data-source-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #aaa;
+  font-family: 'Courier New', monospace;
+}
+
+.radial-chart-node .vector-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #aaa;
+  font-family: 'Courier New', monospace;
+  flex-wrap: wrap;
+}
+
+.radial-chart-node .vector-stats span {
+  padding: 4px 8px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  border: 1px solid #444;
+  white-space: nowrap;
+}
+
+.radial-chart-node .chart-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.radial-chart-node .chart-controls .btn {
+  min-width: 40px;
+}
+
+.radial-chart-node .chart-controls .form-select {
+  background: #1e1e1e;
+  color: #fff;
+  border: 1px solid #444;
+  font-size: 12px;
+}
+
+.radial-chart-node .chart-controls .form-select:focus {
+  border-color: #4dabf7;
+  box-shadow: 0 0 0 0.2rem rgba(77, 171, 247, 0.25);
+}
+
+.radial-chart-node .chart-node-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+/* Ресайзеры для радиального графика */
+.radial-chart-node .resize-handle-square {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #4dabf7;
+  border: 2px solid #fff;
+  border-radius: 2px;
+  z-index: 10;
+  transition: all 0.2s;
+}
+
+.radial-chart-node .resize-handle-square:hover {
+  background: #339af0;
+  transform: scale(1.2);
+}
+
+.radial-chart-node .resize-handle-square.top-left {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+
+.radial-chart-node .resize-handle-square.top-right {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.radial-chart-node .resize-handle-square.bottom-left {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.radial-chart-node .resize-handle-square.bottom-right {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+}
+
+.radial-chart-node .resize-handle-square.top {
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.radial-chart-node .resize-handle-square.top:hover {
+  transform: translateX(-50%) scale(1.2);
+}
+
+.radial-chart-node .resize-handle-square.bottom {
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.radial-chart-node .resize-handle-square.bottom:hover {
+  transform: translateX(-50%) scale(1.2);
+}
+
+.radial-chart-node .resize-handle-square.left {
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.radial-chart-node .resize-handle-square.left:hover {
+  transform: translateY(-50%) scale(1.2);
+}
+
+.radial-chart-node .resize-handle-square.right {
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.radial-chart-node .resize-handle-square.right:hover {
+  transform: translateY(-50%) scale(1.2);
+}
+
+/* Анимация при выборе узла */
+.radial-chart-node.selected {
+  border-color: #339af0;
+  box-shadow: 0 0 20px rgba(77, 171, 247, 0.5);
+}
+
+/* Стили для статистики в Sidebar */
+.graph-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.graph-stats .stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.graph-stats .stat-label {
+  color: #aaa;
+}
+
+.graph-stats .badge {
+  min-width: 30px;
+  text-align: center;
+}
+

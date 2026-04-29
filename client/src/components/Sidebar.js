@@ -8,12 +8,10 @@ const Sidebar = ({
   minWidth = 20,
   maxWidth = 600,
   onAddChartNode,
-  onAddDataSourceNode,
-  onAddProcessorNode,
+  onAddRadialChartNode,
   onDeleteSelectedNode,
   onResetGraph,
-  selectedNode,
-  graphInfo
+  selectedNode
 }) => {
   const [sidebarWidth, setSidebarWidth] = useState(width);
   const [isResizing, setIsResizing] = useState(false);
@@ -693,19 +691,13 @@ const Sidebar = ({
                     className="btn btn-outline-primary btn-sm w-100 mb-2"
                     onClick={onAddChartNode}
                   >
-                    <i className="bi bi-bar-chart"></i> График
+                    <i className="bi bi-bar-chart"></i> Линейный график
                   </button>
                   <button 
-                    className="btn btn-outline-success btn-sm w-100 mb-2"
-                    onClick={onAddDataSourceNode}
+                    className="btn btn-outline-primary btn-sm w-100 mb-2"
+                    onClick={onAddRadialChartNode}
                   >
-                    <i className="bi bi-database"></i> Векторная диаграмма(None)
-                  </button>
-                  <button 
-                    className="btn btn-outline-warning btn-sm w-100"
-                    onClick={onAddProcessorNode}
-                  >
-                    <i className="bi bi-gear"></i> Доп. инструмент
+                    <i className="bi bi-radar"></i> Радиальный график
                   </button>
                 </div>
               </div>
