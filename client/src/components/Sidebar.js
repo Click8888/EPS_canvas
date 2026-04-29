@@ -31,9 +31,9 @@ const Sidebar = ({
     chartId: 'default-chart'
   });
 
-  // Состояние для управления линиями
-  const [lines, setLines] = useState([]);
-  const [nextLineId, setNextLineId] = useState(1);
+  const [chartLines, setChartLines] = useState({}); // { chartId: [lines] }
+  const [nextLineIds, setNextLineIds] = useState({}); // { chartId: nextId }
+  const [currentLines, setCurrentLines] = useState([]); // Линии текущего выбранного графика
   const [tableColumnsCache, setTableColumnsCache] = useState({});
 
   // Палитра цветов для линий
@@ -84,6 +84,43 @@ const Sidebar = ({
   }, []);
 
 
+  // Загрузка линий при выборе графика
+  useEffect(() => {
+    if (selectedNode && selectedNode.type === 'chartNode') {
+      const chartId = selectedNode.id;
+      
+      // Если у графика еще нет линий, создаем одну линию по умолчанию
+      if (!chartLines[chartId]) {
+        const defaultLine = {
+          id: `line-1`,
+          name: `Линия 1`,
+          table: '',
+          xAxis: '',
+          yAxis: '',
+          color: getRandomColor(),
+          data: []
+        };
+        
+        setChartLines(prev => ({
+          ...prev,
+          [chartId]: [defaultLine]
+        }));
+        
+        setNextLineIds(prev => ({
+          ...prev,
+          [chartId]: 2
+        }));
+        
+        setCurrentLines([defaultLine]);
+      } else {
+        // Загружаем существующие линии этого графика
+        setCurrentLines(chartLines[chartId]);
+      }
+    } else {
+      setCurrentLines([]);
+    }
+  }, [selectedNode, chartLines]);
+
   // Загрузка таблиц при монтировании компонента и при смене БД
   useEffect(() => {
     // Загружаем таблицы при первом рендере
@@ -109,32 +146,68 @@ const Sidebar = ({
   }, [loadTables]);
 
 
-  // Добавить новую линию
+  //Добавить линию
   const addLine = () => {
-    const newLine = {
-      id: `line-${nextLineId}`,
-      name: `Линия ${nextLineId}`,
-      table: '',
-      xAxis: '',
-      yAxis: '',
-      color: getRandomColor(),
-      data: []
-    };
-    
-    setLines([...lines, newLine]);
-    setNextLineId(nextLineId + 1);
+  if (!selectedNode || selectedNode.type !== 'chartNode') return;
+  
+  const chartId = selectedNode.id;
+  const currentNextId = nextLineIds[chartId] || 1;
+  
+  const newLine = {
+    id: `line-${currentNextId}`,
+    name: `Линия ${currentNextId}`,
+    table: '',
+    xAxis: '',
+    yAxis: '',
+    color: getRandomColor(),
+    data: []
   };
+  
+  const updatedLines = [...(chartLines[chartId] || []), newLine];
+  
+  setChartLines(prev => ({
+    ...prev,
+    [chartId]: updatedLines
+  }));
+  
+  setNextLineIds(prev => ({
+    ...prev,
+    [chartId]: currentNextId + 1
+  }));
+  
+  setCurrentLines(updatedLines);
+};
 
   // Удалить линию
   const removeLine = (lineId) => {
-    setLines(lines.filter(line => line.id !== lineId));
+    if (!selectedNode || selectedNode.type !== 'chartNode') return;
+    
+    const chartId = selectedNode.id;
+    const updatedLines = (chartLines[chartId] || []).filter(line => line.id !== lineId);
+    
+    setChartLines(prev => ({
+      ...prev,
+      [chartId]: updatedLines
+    }));
+    
+    setCurrentLines(updatedLines);
   };
 
   // Обновить параметры линии
   const updateLine = (lineId, field, value) => {
-    setLines(lines.map(line => 
+    if (!selectedNode || selectedNode.type !== 'chartNode') return;
+    
+    const chartId = selectedNode.id;
+    const updatedLines = (chartLines[chartId] || []).map(line => 
       line.id === lineId ? { ...line, [field]: value } : line
-    ));
+    );
+    
+    setChartLines(prev => ({
+      ...prev,
+      [chartId]: updatedLines
+    }));
+    
+    setCurrentLines(updatedLines);
   };
 
   // Загрузить столбцы для выбранной таблицы линии
@@ -157,7 +230,8 @@ const Sidebar = ({
         col.toLowerCase().includes('measurement')
       ) || columns[1] || '';
       
-      setLines(lines.map(line => 
+      const chartId = selectedNode.id;
+      const updatedLines = currentLines.map(line => 
         line.id === lineId 
           ? { 
               ...line, 
@@ -167,7 +241,12 @@ const Sidebar = ({
               name: yAxis || line.name
             } 
           : line
-      ));
+      );
+      setChartLines(prev => ({
+        ...prev,
+        [chartId]: updatedLines
+      }));
+      setCurrentLines(updatedLines);
       return;
     }
     
@@ -206,7 +285,8 @@ const Sidebar = ({
           col.toLowerCase().includes('measurement')
         ) || columns[1] || '';
         
-        setLines(lines.map(line => 
+        const chartId = selectedNode.id;
+        const updatedLines = currentLines.map(line => 
           line.id === lineId 
             ? { 
                 ...line, 
@@ -216,7 +296,12 @@ const Sidebar = ({
                 name: yAxis || line.name
               } 
             : line
-        ));
+        );
+        setChartLines(prev => ({
+          ...prev,
+          [chartId]: updatedLines
+        }));
+        setCurrentLines(updatedLines);
       }
     } catch (err) {
       console.error(`Ошибка загрузки столбцов для линии ${lineId}:`, err);
@@ -305,7 +390,7 @@ const Sidebar = ({
 
   // Применить все линии к графику
   const applyAllLines = async () => {
-    if (!selectedNode || lines.length === 0) {
+    if (!selectedNode || currentLines.length === 0) {
       setChartParams(prev => ({
         ...prev,
         paramError: 'Добавьте хотя бы одну линию'
@@ -314,7 +399,7 @@ const Sidebar = ({
     }
     
     // Проверяем, что все линии заполнены
-    const invalidLines = lines.filter(line => !line.table || !line.xAxis || !line.yAxis);
+    const invalidLines = currentLines.filter(line => !line.table || !line.xAxis || !line.yAxis);
     if (invalidLines.length > 0) {
       setChartParams(prev => ({
         ...prev,
@@ -327,16 +412,22 @@ const Sidebar = ({
     
     try {
       // Загружаем данные для всех линий параллельно
-      const loadPromises = lines.map(line => loadLineData(line));
+      const loadPromises = currentLines.map(line => loadLineData(line));
       const allData = await Promise.all(loadPromises);
       
       // Обновляем линии с загруженными данными
-      const updatedLines = lines.map((line, index) => ({
+      const updatedLines = currentLines.map((line, index) => ({
         ...line,
         data: allData[index] || []
       }));
       
-      setLines(updatedLines);
+      // Сохраняем обновленные линии в chartLines
+      const chartId = selectedNode.id;
+      setChartLines(prev => ({
+        ...prev,
+        [chartId]: updatedLines
+      }));
+      setCurrentLines(updatedLines);
       
       // Отправляем данные в график
       if (window.updateNodeData && selectedNode) {
@@ -669,7 +760,7 @@ const Sidebar = ({
                 <div className="sidebar-section">
                   <h6 className="sidebar-section-title">
                     <i className="bi bi-node-plus"></i>
-                    Параметры графика
+                    Параметры графика #{selectedNode.id}
                   </h6>
                   <div className="selected-node-info">
                     <div className="selected-node-header">
@@ -707,14 +798,14 @@ const Sidebar = ({
                         )}
                         
                         {/* Список линий */}
-                        {lines.length === 0 ? (
+                        {currentLines.length === 0 ? (
                           <div className="text-center py-3" style={{ fontSize: '12px' }}>
                             <i className="bi bi-info-circle me-1"></i>
                             Для начала работы создайте серию
                           </div>
                         ) : (
                           <div className="lines-list">
-                            {lines.map((line, index) => (
+                            {currentLines.map((line, index) => (
                               <div key={line.id} className="line-item card mb-2" style={{ fontSize: '12px' }}>
                                 <div className="card-body p-2">
                                   {/* Заголовок линии с цветом и удалением */}
@@ -812,12 +903,12 @@ const Sidebar = ({
                         )}
                         
                         {/* Кнопка применения */}
-                        {lines.length > 0 && (
+                        {currentLines.length > 0 && (
                           <div className="d-grid gap-2 mt-3">
                             <button
                               className="btn btn-primary btn-sm"
                               onClick={applyAllLines}
-                              disabled={chartParams.isLoadingParams || lines.length === 0}
+                              disabled={chartParams.isLoadingParams || currentLines.length === 0}
                             >
                               {chartParams.isLoadingParams ? (
                                 <>
@@ -827,7 +918,7 @@ const Sidebar = ({
                               ) : (
                                 <>
                                   <i className="bi bi-check-circle me-1"></i>
-                                  Применить параметры ({lines.length})
+                                  Применить параметры ({currentLines.length})
                                 </>
                               )}
                             </button>
