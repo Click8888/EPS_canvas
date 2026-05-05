@@ -709,3 +709,257 @@ body.resizing * {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Переменные тем */
+:root {
+  --bg-primary: #f8f9fa;
+  --bg-secondary: #e9ecef;
+  --bg-card: #ffffff;
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --border-color: #dee2e6;
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+body.dark-theme {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-card: #0f3460;
+  --text-primary: #ffffff;
+  --text-secondary: #adb5bd;
+  --border-color: #2d2d3a;
+  --hover-bg: rgba(255, 255, 255, 0.1);
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.erd-container {
+  background-color: var(--bg-primary);
+}
+
+/* ReactFlow стили */
+.reactflow-wrapper {
+  background-color: var(--bg-primary);
+}
+
+.react-flow__node {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.react-flow__edge-path {
+  stroke: var(--text-secondary);
+}
+
+.react-flow__controls button {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.react-flow__controls button:hover {
+  background: var(--hover-bg);
+}
+
+/* Общие стили */
+.modal-content {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body.light-theme select,
+body.light-theme input,
+body.light-theme textarea {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+body.light-theme .alert-info {
+  background-color: #cff4fc;
+  color: #055160;
+}
+
+body.light-theme .alert-danger {
+  background-color: #f8d7da;
+  color: #842029;
+}
+
+body.light-theme .alert-success {
+  background-color: #d1e7dd;
+  color: #0a3622;
+}
+
+/* Полная поддержка светлой темы для React Flow */
+body.light-theme .react-flow {
+  background-color: #f8f9fa;
+}
+
+body.light-theme .react-flow__pane {
+  background-color: #f8f9fa;
+}
+
+body.light-theme .react-flow__background {
+  background-color: #f8f9fa;
+}
+
+/* Точки фона */
+body.light-theme .react-flow__background path {
+  stroke: #0d0f11;
+}
+
+/* Линии сетки */
+body.light-theme .react-flow__background line {
+  stroke: #dee2e6;
+}
+
+/* Ноды */
+body.light-theme .react-flow__node {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  color: #212529;
+}
+
+body.light-theme .react-flow__node.selected {
+  border-color: #4dabf7;
+  box-shadow: 0 0 0 1px #4dabf7;
+}
+
+/* Эджы (соединения) */
+body.light-theme .react-flow__edge-path {
+  stroke: #adb5bd;
+  stroke-width: 2;
+}
+
+body.light-theme .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #4dabf7;
+}
+
+/* Стрелки на эджах */
+body.light-theme .react-flow__edge-arrowhead {
+  fill: #adb5bd;
+}
+
+body.light-theme .react-flow__edge.selected .react-flow__edge-arrowhead {
+  fill: #4dabf7;
+}
+
+/* Контролы (зум и т.д.) */
+body.light-theme .react-flow__controls {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .react-flow__controls-button {
+  background: #ffffff;
+  border-bottom: 1px solid #dee2e6;
+  color: #212529;
+}
+
+body.light-theme .react-flow__controls-button:hover {
+  background: #f8f9fa;
+}
+
+body.light-theme .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+/* Мини-карта */
+body.light-theme .react-flow__minimap {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .react-flow__minimap-mask {
+  fill: rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .react-flow__minimap-node {
+  fill: #4dabf7;
+  stroke: #ffffff;
+  stroke-width: 1;
+}
+
+/* Панель (Panel) */
+body.light-theme .react-flow__panel {
+  background: transparent;
+}
+
+/* Подсказки при наведении */
+body.light-theme .react-flow__node:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Handle (точки соединения) */
+body.light-theme .react-flow__handle {
+  background: #4dabf7;
+  border: 2px solid #ffffff;
+}
+
+body.light-theme .react-flow__handle:hover {
+  background: #339af0;
+}
+
+/* Узлы при перетаскивании */
+body.light-theme .react-flow__node.dragging {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Текст внутри нод */
+body.light-theme .react-flow__node p,
+body.light-theme .react-flow__node span,
+body.light-theme .react-flow__node div {
+  color: #212529;
+}
+
+/* Стили для selection-box (выделение области) */
+body.light-theme .react-flow__selection {
+  background: rgba(77, 171, 247, 0.1);
+  border: 1px solid #4dabf7;
+}
+
+/* Стили для edge-label */
+body.light-theme .react-flow__edge-text {
+  fill: #212529;
+}
+
+body.light-theme .react-flow__edge-textbg {
+  fill: #ffffff;
+  stroke: #dee2e6;
+}
+
+/* Стили для анимированных эджей */
+body.light-theme .react-flow__edge-animated path {
+  stroke-dasharray: 5;
+  animation: dashdraw 0.5s linear infinite;
+}
+
+/* Аттрибуция React Flow */
+body.light-theme .react-flow__attribution {
+  background: rgba(255, 255, 255, 0.9);
+  color: #6c757d;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+body.light-theme .react-flow__attribution a {
+  color: #4dabf7;
+}
+
+/* Кнопки зума при ховере */
+body.light-theme .react-flow__controls-button svg {
+  fill: #212529;
+}
+

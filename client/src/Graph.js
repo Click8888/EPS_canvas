@@ -18,6 +18,93 @@ import Sidebar from './components/Sidebar';
 import Chart from './components/Chart';
 import RadialChart from './components/RadialChart';
 
+// Компонент редактируемого заголовка
+const EditableTitle = ({ value, onSave, isSelected }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = () => {
+    if (editValue.trim() && editValue !== value) {
+      onSave(editValue.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setEditValue(value);
+      setIsEditing(false);
+    }
+  };
+
+  const handleBlur = () => {
+    handleSave();
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        className="chart-title-input"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#2d2d2d',
+          border: '1px solid #4dabf7',
+          borderRadius: '4px',
+          color: '#fff',
+          fontSize: '14px',
+          fontWeight: '500',
+          padding: '2px 8px',
+          outline: 'none',
+          width: 'auto',
+          minWidth: '100px'
+        }}
+      />
+    );
+  }
+
+  return (
+    <div 
+      className="chart-title-display"
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (isSelected) {
+          setIsEditing(true);
+        }
+      }}
+      style={{ cursor: isSelected ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center' }}
+      title={isSelected ? "Нажмите для переименования" : ""}
+    >
+      <span>{value}</span>
+      {isSelected && (
+        <i 
+          className="bi bi-pencil-square ms-2" 
+          style={{ fontSize: '12px', opacity: 0.6, cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsEditing(true);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
 const getCursor = (direction) => {
   switch (direction) {
     case 'top-left':
@@ -656,7 +743,27 @@ useEffect(() => {
       <div className="chart-node-header">
         <div className="chart-node-title">
           <i className="bi bi-bar-chart"></i>
-          <span>{data.label || 'График'}</span>
+          <EditableTitle 
+            value={data.label || 'График'}
+            onSave={(newTitle) => {
+              // Обновляем данные узла
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === id) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        label: newTitle
+                      }
+                    };
+                  }
+                  return node;
+                })
+              );
+            }}
+            isSelected={selected}
+          />
           {dataSourceInfo && (
             <span className="data-source-badge ms-2">
               {dataSourceInfo.table}: {dataSourceInfo.xAxis} → {dataSourceInfo.yAxis}
@@ -1162,7 +1269,26 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
       <div className="chart-node-header">
         <div className="chart-node-title">
           <i className="bi bi-radar"></i>
-          <span>{data.label || 'Радиальный график'}</span>
+          <EditableTitle 
+            value={data.label || 'Радиальный график'}
+            onSave={(newTitle) => {
+              setNodes((nds) =>
+                nds.map((node) => {
+                  if (node.id === id) {
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        label: newTitle
+                      }
+                    };
+                  }
+                  return node;
+                })
+              );
+            }}
+            isSelected={selected}
+          />
           {dataSourceInfo && (
             <span className="data-source-badge ms-2">
               {dataSourceInfo.table}: {dataSourceInfo.xColumn}, {dataSourceInfo.yColumn}
@@ -1456,7 +1582,7 @@ const Graph = () => {
           }}
         >
           <Controls />
-          <Background variant="dots" gap={12} size={1} />
+          <Background variant="dots" gap={12} size={1.3} />
         </ReactFlow>
       </div>
     </div>

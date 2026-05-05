@@ -720,3 +720,32 @@ body.resizing * {
   border-width: 0.15em;
 }
 
+/* Светлая тема для сайдбара */
+body.light-theme .sidebar-header {
+  border-bottom-color: #dee2e6;
+}
+
+body.light-theme .sidebar-title {
+  color: #212529;
+}
+
+body.light-theme .sidebar-collapsed-icon {
+  background-color: #ffffff;
+  color: #4dabf7;
+}
+
+body.light-theme .sidebar-resizer {
+  background-color: #dee2e6;
+}
+
+body.light-theme .sidebar-resizer:hover {
+  background-color: #adb5bd;
+}
+
+body.light-theme .badge.bg-success {
+  background-color: #198754 !important;
+}
+
+body.light-theme .badge.bg-danger {
+  background-color: #dc3545 !important;
+}

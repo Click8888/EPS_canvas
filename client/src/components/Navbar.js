@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ThemeProvider, useTheme } from './ThemeContext';
 import './navbar.css';
 
 const API = 'http://localhost:8080/api';
@@ -18,6 +19,7 @@ export default function Navbar() {
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState('');
   const [successMsg, setSuccessMsg]         = useState('');
+  const { isDark, toggleTheme } = useTheme();
 
   /* ───── загружаем статус при старте ───── */
   useEffect(() => {
@@ -112,6 +114,15 @@ export default function Navbar() {
                 {badgeLabel}
               </span>
             </span>
+
+              {/* Кнопка переключения темы */}
+            <button
+              className="btn btn-outline-light btn-sm"
+              onClick={toggleTheme}
+              title={isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
+            >
+              <i className={`bi ${isDark ? 'bi-moon-fill' : 'bi-sun-fill'}`} />
+            </button>
 
             {/* Кнопка подключения */}
             <button
