@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import ReactFlow, {
-  
+import { 
+  ReactFlow,
   MiniMap,
   Controls,
   Background,
@@ -11,12 +11,13 @@ import ReactFlow, {
   ReactFlowProvider,
   useReactFlow,
   Panel
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import './Graph.css';
 import Sidebar from './components/Sidebar';
 import Chart from './components/Chart';
 import RadialChart from './components/RadialChart';
+import { useTheme } from './components/ThemeContext';
 
 // Компонент редактируемого заголовка
 const EditableTitle = ({ value, onSave, isSelected }) => {
@@ -64,7 +65,7 @@ const EditableTitle = ({ value, onSave, isSelected }) => {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#2d2d2d',
-          border: '1px solid #4dabf7',
+          border: '1px solid #6c757d',
           borderRadius: '4px',
           color: '#fff',
           fontSize: '14px',
@@ -1339,6 +1340,7 @@ const nodeTypes = {
 
 // Основной компонент графа
 const Graph = () => {
+  const { isDark } = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [rfInstance, setRfInstance] = useState(null);
@@ -1553,6 +1555,7 @@ const Graph = () => {
       {/* React Flow */}
       <div className="reactflow-wrapper">
         <ReactFlow
+          colorMode={isDark ? 'dark' : 'light'}
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChangeHandler}

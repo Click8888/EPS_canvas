@@ -19,6 +19,7 @@ echarts.use([
   UniversalTransition
 ]);
 
+
 // Функция для форматирования времени в формат ГГГГ-ММ-ДД ЧЧ:ММ:СС.мс
 const formatTime = (timeValue) => {
   if (timeValue === undefined || timeValue === null) return '';
@@ -29,7 +30,6 @@ const formatTime = (timeValue) => {
     const minutes = Math.floor((timeValue % 3600) / 60);
     const seconds = Math.floor(timeValue % 60);
     const milliseconds = Math.floor((timeValue % 1) * 1000);
-    
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
   }
   
@@ -341,7 +341,7 @@ const Chart = ({
   const chartRef = useRef(null);
   const [option, setOption] = useState(defaultOption);
   const [chartInstance, setChartInstance] = useState(null);
-  
+  const currentXRangeRef = useRef(null);
   // Состояние для отслеживания взаимодействия пользователя с графиком
   const [userInteracting, setUserInteracting] = useState(false);
   const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
@@ -598,8 +598,8 @@ useEffect(() => {
         
         //Обновляем currentXRange и ось Y
         if (newXRange) {
+          currentXRangeRef.current = newXRange;
           setCurrentXRange(newXRange);
-          
           // Вычисляем новый диапазон Y для видимых данных
           const yRange = calculateYRange(
             lines.length > 0 ? lines : null,
@@ -688,8 +688,8 @@ useEffect(() => {
   // Вычисляем диапазон Y для текущего видимого диапазона X
   const yRange = calculateYRange(
     lines.length > 0 ? lines : null,
-    currentXRange?.min || null,
-    currentXRange?.max || null
+    currentXRangeRef.current?.min || null,
+    currentXRangeRef.current?.max || null
   );
   
   const updateOption = {
@@ -790,16 +790,16 @@ useEffect(() => {
           // Используем calculateYRange для определения диапазона
           const yRange = calculateYRange(
             lines.length > 0 ? lines : null,
-            currentXRange?.min || null, 
-            currentXRange?.max || null
+            currentXRangeRef.current?.min || null,
+            currentXRangeRef.current?.max || null
           );
           return yRange.min;
         },
         max: function(value) {
           const yRange = calculateYRange(
             lines.length > 0 ? lines : null,
-            currentXRange?.min || null, 
-            currentXRange?.max || null
+            currentXRangeRef.current?.min || null,
+            currentXRangeRef.current?.max || null
           );
           return yRange.max;
         }
@@ -864,7 +864,7 @@ useEffect(() => {
     }
   }
 
-}, [chartData, lines, activeGraphUpdate, chartInstance, currentXRange]);
+}, [chartData, lines, activeGraphUpdate, chartInstance]);
 
   return (
     <div

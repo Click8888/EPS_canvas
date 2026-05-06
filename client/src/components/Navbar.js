@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ThemeProvider, useTheme } from './ThemeContext';
+import { useTheme } from './ThemeContext';
 import './navbar.css';
+import '../App.css';
 
 const API = 'http://localhost:8080/api';
 
@@ -93,10 +94,10 @@ export default function Navbar() {
     ? `${status.config?.dbname}@${status.config?.host}:${status.config?.port}`
     : 'Нет подключения';
 
-  return (
+return (
     <>
-      {/* ══════════════════ NAVBAR ══════════════════ */}
-      <nav className="navbar navbar-dark bg-dark">
+      {/* ════════════════ NAVBAR ════════════════ */}
+      <nav className={`navbar ${isDark ? 'navbar-dark bg-dark' : 'navbar-light bg-light'}`}>
         <div className="container-fluid">
           <a className="navbar-brand fw-bold" href="/">EPS</a>
 
@@ -115,18 +116,9 @@ export default function Navbar() {
               </span>
             </span>
 
-              {/* Кнопка переключения темы */}
-            <button
-              className="btn btn-outline-light btn-sm"
-              onClick={toggleTheme}
-              title={isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
-            >
-              <i className={`bi ${isDark ? 'bi-moon-fill' : 'bi-sun-fill'}`} />
-            </button>
-
             {/* Кнопка подключения */}
             <button
-              className="btn btn-outline-info btn-sm"
+              className="btn btn-outline-secondary btn-sm"
               onClick={() => setShowModal(true)}
             >
               <i className="bi bi-plug-fill me-1" />
@@ -134,10 +126,19 @@ export default function Navbar() {
             </button>
 
             {/* Кнопка админки */}
-            <a className="btn btn-outline-light btn-sm" href="/admin">
+            <a className="btn btn-outline-secondary btn-sm" href="/admin">
               <i className="bi bi-gear-fill me-1" />
               Админ-панель
             </a>
+
+              {/* Кнопка переключения темы */}
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              onClick={toggleTheme}
+              title={isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
+            >
+              <i className={`bi ${isDark ? 'bi-sun-fill' : 'bi-moon-fill'}`} />
+            </button>
           </div>
         </div>
       </nav>
@@ -150,10 +151,10 @@ export default function Navbar() {
           onClick={(e) => e.target === e.currentTarget && closeModal()}
         >
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content bg-dark text-light border border-secondary">
+            <div className="modal-content">
 
               {/* Заголовок */}
-              <div className="modal-header border-secondary">
+              <div className="modal-header">
                 <h5 className="modal-title">
                   <i className="bi bi-database-fill me-2 text-info" />
                   Подключение к PostgreSQL

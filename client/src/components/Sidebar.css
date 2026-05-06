@@ -1,10 +1,10 @@
 .sidebar {
   position: relative;
   height: 100vh;
-  background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
-  color: #e2e8f0;
-  border-right: 1px solid #4a5568;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+  background: var(--bg-light);
+  color: var(--text-primary);
+  border-right: 1px solid var(--border-color);
+  box-shadow: 2px 0 10px var(--shadow);
   transition: none !important; /* Убираем анимацию для ширины */
   overflow: hidden;
   display: flex;
@@ -77,6 +77,7 @@
 .sidebar-header {
   padding: 1.5rem 1rem;
   border-bottom: 1px solid #4a5568;
+  
   background: rgba(0, 0, 0, 0.2);
   position: relative;
   min-height: 70px;
@@ -226,7 +227,7 @@
 
 .quick-actions .btn:hover {
   background: rgba(74, 85, 104, 0.5);
-  border-color: #63b3ed;
+  border-color: #030506;
   color: #63b3ed;
 }
 
@@ -560,7 +561,7 @@ body.resizing * {
 }
 
 .line-card:hover {
-  border-color: #63b3ed;
+  border-color: #121212;
   box-shadow: 0 2px 8px rgba(99, 179, 237, 0.2);
 }
 
@@ -610,7 +611,7 @@ body.resizing * {
 .line-card .form-control:focus,
 .line-card .form-select:focus {
   background: rgba(26, 32, 44, 0.95);
-  border-color: #63b3ed;
+  border-color: #121212;
   color: #e2e8f0;
   box-shadow: 0 0 0 0.2rem rgba(99, 179, 237, 0.25);
 }
@@ -720,32 +721,37 @@ body.resizing * {
   border-width: 0.15em;
 }
 
-/* Светлая тема для сайдбара */
-body.light-theme .sidebar-header {
-  border-bottom-color: #dee2e6;
+/* Темная тема для сайдбара */
+[data-theme="dark"] .sidebar {
+  background: linear-gradient(180deg, #11161e 0%, #1e2430 100%);
+  color: #e2e8f0;
 }
 
-body.light-theme .sidebar-title {
-  color: #212529;
+[data-theme="dark"] .sidebar-header {
+  border-bottom-color: #4a5568;
 }
 
-body.light-theme .sidebar-collapsed-icon {
-  background-color: #ffffff;
-  color: #4dabf7;
+[data-theme="dark"] .sidebar-title {
+  color: var(--accent-color);
 }
 
-body.light-theme .sidebar-resizer {
-  background-color: #dee2e6;
+[data-theme="dark"] .sidebar-collapsed-icon {
+  background-color: var(--bg-card);
+  color: var(--accent-color);
 }
 
-body.light-theme .sidebar-resizer:hover {
-  background-color: #adb5bd;
+[data-theme="dark"] .sidebar-resizer {
+  background-color: var(--border-color);
 }
 
-body.light-theme .badge.bg-success {
+[data-theme="dark"] .sidebar-resizer:hover {
+  background-color: var(--text-secondary);
+}
+
+[data-theme="dark"] .badge.bg-success {
   background-color: #198754 !important;
 }
 
-body.light-theme .badge.bg-danger {
+[data-theme="dark"] .badge.bg-danger {
   background-color: #dc3545 !important;
 }

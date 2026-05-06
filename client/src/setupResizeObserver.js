@@ -1,189 +1,110 @@
-// src/setupResizeObserver.js - ОБНОВЛЕННЫЙ ВАРИАНТ
-
-// ВАЖНО: Этот файл должен быть импортирован ПЕРВЫМ в index.js
-
-// === РАДИКАЛЬНОЕ РЕШЕНИЕ: Полное отключение ResizeObserver в dev режиме ===
-(function() {
-  // Сохраняем оригинальные функции
+// setupResizeObserver.js – исправленная версия
+(function () {
+  // Сохраняем оригиналы
   const originalConsoleError = console.error;
   const originalConsoleWarn = console.warn;
-  const originalConsoleLog = console.log;
-  
-  // Полный перехват всех ошибок
-  console.error = function(...args) {
-    const errorText = args.join(' ').toLowerCase();
-    
-    // Игнорируем ВСЕ ResizeObserver ошибки
+
+  // Глушим только сообщения о ResizeObserver
+  console.error = function (...args) {
+    const text = args.join(' ').toLowerCase();
     if (
-      errorText.includes('resizeobserver') ||
-      errorText.includes('loop completed') ||
-      errorText.includes('loop limit exceeded') ||
-      errorText.includes('008') ||
-      errorText.includes("couldn't create edge")
+      text.includes('resizeobserver') ||
+      text.includes('loop completed') ||
+      text.includes('loop limit exceeded') ||
+      text.includes('008') ||
+      text.includes("couldn't create edge")
     ) {
-      // Полностью игнорируем - не логируем, не показываем
       return;
     }
-    
     originalConsoleError.apply(console, args);
   };
-  
-  console.warn = function(...args) {
-    const warningText = args.join(' ').toLowerCase();
-    
-    if (warningText.includes('resizeobserver')) {
-      return;
-    }
-    
+
+  console.warn = function (...args) {
+    const text = args.join(' ').toLowerCase();
+    if (text.includes('resizeobserver')) return;
     originalConsoleWarn.apply(console, args);
   };
-  
-  // Отлавливаем ошибки в промисах
-  const originalPromise = window.Promise;
-  if (originalPromise) {
-    window.Promise = class SafePromise extends originalPromise {
-      constructor(executor) {
-        super((resolve, reject) => {
-          executor(
-            resolve,
-            (error) => {
-              if (error && error.message && (
-                error.message.includes('ResizeObserver') ||
-                error.message.includes('loop completed')
-              )) {
-                // Игнорируем ошибку
-                resolve(null);
-              } else {
-                reject(error);
-              }
-            }
-          );
-        });
-      }
-    };
-    
-    // Копируем статические методы
-    Object.setPrototypeOf(window.Promise, originalPromise);
-    window.Promise.resolve = originalPromise.resolve;
-    window.Promise.reject = originalPromise.reject;
-    window.Promise.all = originalPromise.all;
-    window.Promise.race = originalPromise.race;
-    window.Promise.allSettled = originalPromise.allSettled;
-  }
-  
-  // Глобальный обработчик ошибок
-  window.addEventListener('error', function(event) {
-    const error = event.error;
-    if (error && error.message) {
-      const msg = error.message.toLowerCase();
-      if (
-        msg.includes('resizeobserver') ||
-        msg.includes('loop completed') ||
-        msg.includes('loop limit exceeded')
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        return false;
-      }
-    }
-    
-    if (event.message) {
-      const msg = event.message.toLowerCase();
-      if (
-        msg.includes('resizeobserver') ||
-        msg.includes('loop completed') ||
-        msg.includes('loop limit exceeded')
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        return false;
-      }
-    }
-    
-    return true;
-  }, true);
-  
-  // Обработчик unhandledrejection
-  window.addEventListener('unhandledrejection', function(event) {
-    const reason = event.reason;
-    if (reason && reason.message) {
-      const msg = reason.message.toLowerCase();
-      if (
-        msg.includes('resizeobserver') ||
-        msg.includes('loop completed') ||
-        msg.includes('loop limit exceeded')
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        return false;
-      }
+
+  // Обработчики глобальных ошибок и unhandledrejection (опционально)
+  window.addEventListener('error', function (event) {
+    const msg = (event.error?.message || event.message || '').toLowerCase();
+    if (msg.includes('resizeobserver') || msg.includes('loop completed') || msg.includes('loop limit exceeded')) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return false;
     }
     return true;
   }, true);
-  
-  // Monkey-patch ResizeObserver для dev режима
+
+  window.addEventListener('unhandledrejection', function (event) {
+    const msg = (event.reason?.message || '').toLowerCase();
+    if (msg.includes('resizeobserver') || msg.includes('loop completed') || msg.includes('loop limit exceeded')) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return false;
+    }
+    return true;
+  }, true);
+
+  // Исправленный SafeResizeObserver – использует реальный ResizeObserver внутри,
+  // но откладывает вызов колбэка через requestAnimationFrame и перехватывает исключения.
   if (process.env.NODE_ENV === 'development') {
     try {
-      // Создаем безопасный ResizeObserver
+      const OriginalResizeObserver = window.ResizeObserver;
+
       class SafeResizeObserver {
         constructor(callback) {
-          this.callback = (entries, observer) => {
-            try {
-              requestAnimationFrame(() => {
-                callback(entries, observer);
-              });
-            } catch (error) {
-              // Игнорируем все ошибки
-            }
-          };
-          this._elements = new Map();
-          
-          // Используем requestAnimationFrame для избежания loop
-          this._rafId = null;
-        }
-        
-        observe(element, options) {
-          this._elements.set(element, { options });
-          
-          // Откладываем вызов callback
-          if (!this._rafId) {
-            this._rafId = requestAnimationFrame(() => {
-              this._rafId = null;
+          // Оборачиваем пользовательский колбэк: откладываем в rAF и глушим ошибки
+          const safeCallback = (entries, observer) => {
+            requestAnimationFrame(() => {
               try {
-                this.callback([], this);
+                callback(entries, observer);
               } catch (e) {
-                // Игнорируем
+                // игнорируем любые ошибки внутри колбэка
               }
             });
+          };
+
+          // Создаём настоящий ResizeObserver (если доступен оригинальный, иначе свой)
+          if (OriginalResizeObserver) {
+            this._observer = new OriginalResizeObserver(safeCallback);
+          } else {
+            // Fallback на всякий случай (не должен происходить)
+            this._observer = null;
           }
         }
-        
-        unobserve(element) {
-          this._elements.delete(element);
+
+        observe(element, options) {
+          if (this._observer) {
+            this._observer.observe(element, options);
+          }
         }
-        
+
+        unobserve(element) {
+          if (this._observer) {
+            this._observer.unobserve(element);
+          }
+        }
+
         disconnect() {
-          this._elements.clear();
-          if (this._rafId) {
-            cancelAnimationFrame(this._rafId);
-            this._rafId = null;
+          if (this._observer) {
+            this._observer.disconnect();
           }
         }
       }
-      
-      // Заменяем глобальный ResizeObserver
-      if (window.ResizeObserver) {
-        window.OriginalResizeObserver = window.ResizeObserver;
+
+      // Сохраняем оригинал, если нужен для отладки
+      if (OriginalResizeObserver) {
+        window.OriginalResizeObserver = OriginalResizeObserver;
       }
       window.ResizeObserver = SafeResizeObserver;
-      
+
     } catch (error) {
-      // Игнорируем ошибки при патчинге
+      // Ничего не делаем
     }
   }
-  
-  console.log('🚀 ResizeObserver errors COMPLETELY suppressed');
+
+  console.log('🚀 ResizeObserver errors completely suppressed (safe wrapper applied)');
 })();

@@ -12,22 +12,19 @@ export const useTheme = () => {
 
 export const ThemeProvider = ({ children }) => {
   const [isDark, setIsDark] = useState(() => {
-  const savedTheme = localStorage.getItem('app-theme');
-  if (savedTheme !== null) {
-    return savedTheme === 'dark';
-  }
-  return false; // По умолчанию светлая тема
-});
+    const savedTheme = localStorage.getItem('app-theme');
+    if (savedTheme !== null) {
+      return savedTheme === 'dark';
+    }
+    return false; // По умолчанию светлая
+  });
 
   useEffect(() => {
-    // Применяем класс темы к body
     if (isDark) {
-      document.body.classList.add('dark-theme');
-      document.body.classList.remove('light-theme');
+      document.documentElement.setAttribute('data-theme', 'dark');
       localStorage.setItem('app-theme', 'dark');
     } else {
-      document.body.classList.add('light-theme');
-      document.body.classList.remove('dark-theme');
+      document.documentElement.setAttribute('data-theme', 'light');
       localStorage.setItem('app-theme', 'light');
     }
   }, [isDark]);

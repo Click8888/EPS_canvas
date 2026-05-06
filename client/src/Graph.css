@@ -1,17 +1,24 @@
 .graph-container {
   width: 100%;
   height: calc(100vh - 60px);
-  background-color: #1e1e1e;
-  color: #fff;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   overflow: hidden;
   display: flex;
   position: relative;
 }
 
 .reactflow-wrapper {
+  flex:1;
+  height: 100%;
+  background-color: var(--bg-primary);
+  position: relative;
+}
+
+.reactflow-wrapper {
   flex: 1;
   height: 100%;
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
   position: relative;
 }
 
@@ -19,8 +26,8 @@
 .chart-node {
   width: 1200px;
   height: 600px;
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -29,8 +36,8 @@
 
 .chart-node-header {
   padding: 4px 8px;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #444;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -48,7 +55,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #fff;
+  color: var(--text-primary);
   font-weight: bold;
 }
 
@@ -60,16 +67,16 @@
 }
 
 .chart-node-footer {
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
   padding: 5px 15px;
-  border-top: 1px solid #444;
+  border-top: 1px solid  var(--border-color);
   font-size: 11px;
 }
 
 .data-source-node {
   width: 400px;
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
   padding: 15px;
@@ -88,7 +95,7 @@
 }
 
 .data-source-info h6 {
-  color: #fff;
+  color: var(--text-primary);
   margin: 0;
   font-size: 14px;
 }
@@ -107,8 +114,8 @@
 
 .processor-node {
   width: 300px;
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
   padding: 15px;
@@ -131,7 +138,7 @@
 }
 
 .processor-info h6 {
-  color: #fff;
+  color: var(--text-primary);
   margin: 0;
   font-size: 14px;
 }
@@ -149,7 +156,7 @@
   justify-content: space-between;
   margin-bottom: 15px;
   padding: 10px;
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
   border-radius: 4px;
 }
 
@@ -164,12 +171,12 @@
 }
 
 .stat-value {
-  color: #fff;
+  color: var(--text-primary);
   font-weight: bold;
 }
 
 .processor-params {
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
   padding: 10px;
   border-radius: 4px;
 }
@@ -185,7 +192,7 @@
 }
 
 .param-value {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* Стили для реакт-флоу */
@@ -213,26 +220,37 @@
 }
 
 .react-flow__minimap {
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
 }
 
 .react-flow__controls {
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
 }
 
 .react-flow__controls-button {
-  background-color: #3a3a3a;
-  border-bottom: 1px solid #444;
-  color: #fff;
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
 }
 
 .react-flow__controls-button:hover {
-  background-color: #4a4a4a;
+  background-color: var(--hover-bg);
+}
+
+[data-theme="dark"] .react-flow__controls {
+  background-color: #2a2a2a;
+  border-color: #444;
+}
+
+[data-theme="dark"] .react-flow__controls-button {
+  background-color: #3a3a3a;
+  border-color: #444;
+  color: #fff;
 }
 
 .react-flow__attribution {
-  background-color: rgba(0, 0, 0, 0.5);
+  color: var(--text-secondary);
   color: #888;
 }
 
@@ -304,15 +322,15 @@
 
 /* Стили для мини-карты */
 .react-flow__minimap {
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
   border-radius: 8px;
   overflow: hidden;
 }
 
 /* Стили для контролов */
 .react-flow__controls {
-  background-color: #2a2a2a;
-  border: 1px solid #444;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
@@ -320,8 +338,8 @@
 
 .react-flow__controls-button {
   background-color: #3a3a3a;
-  border-bottom: 1px solid #444;
-  color: #fff;
+  border-bottom: 1px solid  var(--border-color);
+  color: var(--text-primary);
   transition: all 0.2s ease;
 }
 
@@ -348,11 +366,11 @@
 
 /* Фон */
 .react-flow__background {
-  background-color: #1e1e1e;
+  background-color: var(--bg-primary);
 }
 
 .react-flow__background-dots {
-  stroke: #444;
+  stroke:  var(--border-color);
 }
 
 .react-flow__node-resizer {
@@ -376,7 +394,7 @@
   width: 8px;
   height: 8px;
   background-color: #4dabf7;
-  border: 2px solid #1e1e1e;
+  border: 2px solid var(--bg-primary);
   border-radius: 50%;
   transition: transform 0.2s, background-color 0.2s;
 }
@@ -653,7 +671,7 @@
   left: 50%;
   transform: translateX(-50%);
   background: #1e1e1e;
-  color: #fff;
+  color: var(--text-primary);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -662,7 +680,7 @@
   pointer-events: none;
   transition: opacity 0.2s;
   z-index: 1001;
-  border: 1px solid #444;
+  border: 1px solid var(--border-color);
 }
 
 .resize-handle-square:hover::after {
@@ -692,7 +710,7 @@
 .chart-node, 
 .data-source-node, 
 .processor-node {
-  border: 1px solid #444;
+  border: 1px solid var(--border-color);
   transition: border-color 0.3s;
 }
 
@@ -715,8 +733,8 @@
 }
 
 .chart-node {
-  background-color: #1e1e1e;
-  border: 1px solid #444;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   overflow: hidden;
   display: flex;
@@ -832,8 +850,8 @@
 
 .radial-chart-node .chart-node-header {
   padding: 4px 8px;
-  background-color: #2d2d2d;
-  border-bottom: 1px solid #444;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid  var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -849,7 +867,7 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .radial-chart-node .chart-node-title i {
@@ -861,7 +879,7 @@
   font-size: 11px;
   padding: 3px 8px;
   background: #1e1e1e;
-  border: 1px solid #444;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   color: #aaa;
   font-family: 'Courier New', monospace;
@@ -880,7 +898,7 @@
   padding: 4px 8px;
   background: #1e1e1e;
   border-radius: 4px;
-  border: 1px solid #444;
+  border: 1px solid var(--border-color);
   white-space: nowrap;
 }
 
@@ -896,8 +914,8 @@
 
 .radial-chart-node .chart-controls .form-select {
   background: #1e1e1e;
-  color: #fff;
-  border: 1px solid #444;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
   font-size: 12px;
 }
 
@@ -919,7 +937,7 @@
   width: 12px;
   height: 12px;
   background: #4dabf7;
-  border: 2px solid #fff;
+  border: 2px solid var(--text-primary);
   border-radius: 2px;
   z-index: 10;
   transition: all 0.2s;
@@ -1016,7 +1034,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 6px 10px;
-  background: #2a2a2a;
+  background: var(--bg-card);
   border-radius: 4px;
   font-size: 13px;
 }
@@ -1030,3 +1048,17 @@
   text-align: center;
 }
 
+[data-theme="dark"] .react-flow__controls-button {
+  background-color: #3a3a3a;
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .react-flow__controls-button:hover {
+  background-color: #4a4a4a;
+}
+
+[data-theme="dark"] .react-flow__attribution {
+  background-color: rgba(0, 0, 0, 0.5);
+  color: var(--text-secondary);
+}
