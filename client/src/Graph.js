@@ -288,7 +288,6 @@ const fetchLinesDataFromDB = useCallback(async () => {
   try {
     setIsUpdating(true);
     
-    // Загружаем данные для всех линий параллельно
     const loadPromises = data.lines.map(async (line) => {
       if (!line.table || !line.xAxis || !line.yAxis) {
         return { ...line, data: [] };
@@ -308,7 +307,6 @@ const fetchLinesDataFromDB = useCallback(async () => {
         const result = await response.json();
         const dbData = result.data || result;
         
-        // Форматируем данные для графика
         const formattedData = dbData
           .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
           .map((row) => {
@@ -368,9 +366,55 @@ const fetchLinesDataFromDB = useCallback(async () => {
     
     const updatedLines = await Promise.all(loadPromises);
     
-    // Обновляем узел с новыми данными
-    setNodes((nds) => 
-      nds.map((node) => {
+    // Собираем все точки из всех линий для обратной совместимости
+  const allDataPoints = [];
+  updatedLines.forEach(line => {
+    if (line.data && Array.isArray(line.data)) {
+      allDataPoints.push(...line.data);
+    }
+  });
+    
+    // Сортируем все точки по времени
+    allDataPoints.sort((a, b) => a.time - b.time);
+    
+    // Обновляем локальное состояние chartData
+    if (allDataPoints.length > 0) {
+    setChartData(prevData => {
+      const prevStr = JSON.stringify(prevData);
+      const newStr = JSON.stringify(allDataPoints);
+      if (prevStr !== newStr) {
+        console.log('Обновлены данные графика');
+        return allDataPoints;
+      }
+      return prevData;
+    });
+  }
+    
+    // Проверяем и обновляем setNodes
+    setNodes((nds) => {
+      const currentNode = nds.find(node => node.id === id && node.type === 'chartNode');
+      if (!currentNode) return nds;
+      
+      // Сравниваем новые данные с текущими
+      const currentLinesData = JSON.stringify(currentNode.data.lines?.map(l => ({
+        id: l.id,
+        dataLength: l.data?.length,
+        lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
+      })));
+      
+      const newLinesData = JSON.stringify(updatedLines.map(l => ({
+        id: l.id,
+        dataLength: l.data?.length,
+        lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
+      })));
+      
+      // Если данные не изменились, не обновляем узел
+      if (currentLinesData === newLinesData) {
+        return nds;
+      }
+      
+
+      return nds.map((node) => {
         if (node.id === id && node.type === 'chartNode') {
           return {
             ...node,
@@ -382,20 +426,20 @@ const fetchLinesDataFromDB = useCallback(async () => {
           };
         }
         return node;
-      })
-    );
+      });
+    });
     
     setIsUpdating(false);
-    console.log(`Автообновление: обновлены данные для ${updatedLines.length} линий`);
     
   } catch (err) {
     console.error('Ошибка автообновления линий:', err);
     setIsUpdating(false);
   }
-}, [data.lines, id, setNodes]);
+}, [id, setNodes, data.lines]);
 
 
-    useEffect(() => {
+    
+useEffect(() => {
   // Используем данные из props
   if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
     console.log('Обновление графика новыми данными:', data.initialData.length, 'точек');
@@ -403,6 +447,19 @@ const fetchLinesDataFromDB = useCallback(async () => {
     setChartData(data.initialData);
   }
   
+  if (data.lines && Array.isArray(data.lines) && data.lines.length > 0) {
+    const allPoints = [];
+    data.lines.forEach(line => {
+      if (line.data && Array.isArray(line.data)) {
+        allPoints.push(...line.data);
+      }
+    });
+    if (allPoints.length > 0) {
+      allPoints.sort((a, b) => a.time - b.time);
+      setChartData(allPoints);
+    }
+  }
+
   if (data.dataSourceInfo) {
     setDataSourceInfo(data.dataSourceInfo);
   }
@@ -426,20 +483,17 @@ const fetchLinesDataFromDB = useCallback(async () => {
   // Запуск/остановка опроса БД
 useEffect(() => {
   if (updateConfig.isAutoUpdate) {
-    // Определяем, какую функцию использовать для автообновления
     const hasLines = data.lines && data.lines.length > 0;
     const hasDataSource = dataSourceInfo && dataSourceInfo.table;
     
     let fetchFunction = null;
     
     if (hasLines) {
-      // Приоритет у множественных линий
       fetchFunction = fetchLinesDataFromDB;
-      console.log('Автообновление: используется режим множественных линий');
+
     } else if (hasDataSource) {
-      // Fallback на старый формат
       fetchFunction = fetchDataFromDB;
-      console.log('Автообновление: используется режим одного источника данных');
+
     }
     
     if (!fetchFunction) {
@@ -447,27 +501,32 @@ useEffect(() => {
       return;
     }
     
-    // Первый запрос сразу
+    //Немедленный первый запрос
     fetchFunction();
     
-    // Затем запускаем интервал
-    const interval = setInterval(() => {
-      fetchFunction();
-    }, updateConfig.interval);
-    
-    setPollingIntervalId(interval);
+    //Запускаем интервал с небольшой задержкой
+    const timeoutId = setTimeout(() => {
+      const interval = setInterval(() => {
+        fetchFunction();
+      }, updateConfig.interval);
+      
+      setPollingIntervalId(interval);
+    }, 50); // Небольшая задержка перед запуском интервала
     
     return () => {
-      if (interval) {
-        clearInterval(interval);
+      clearTimeout(timeoutId);
+      if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+        setPollingIntervalId(null);
       }
     };
-  } else if (pollingIntervalId) {
-    clearInterval(pollingIntervalId);
-    setPollingIntervalId(null);
+  } else {
+    if (pollingIntervalId) {
+      clearInterval(pollingIntervalId);
+      setPollingIntervalId(null);
+    }
   }
-
-}, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, data.lines, fetchDataFromDB, fetchLinesDataFromDB]);
+}, [updateConfig.isAutoUpdate, updateConfig.interval, data.lines, dataSourceInfo, fetchDataFromDB, fetchLinesDataFromDB]);
 
 
   // Тоггл автоматического обновления
@@ -537,8 +596,10 @@ useEffect(() => {
       
       setIsResizing(true);
       document.body.style.cursor = getCursor(direction);
+
+      let animationFrameId = null;
       
-      const handleMouseMove = (moveEvent) => {
+    const handleMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
       
@@ -613,41 +674,52 @@ useEffect(() => {
       newWidth = Math.min(999999, newWidth);
       newHeight = Math.min(99999, newHeight);
       
-      // Обновляем размер локально
-      setNodeSize({ width: newWidth, height: newHeight });
-      
-      // ДОБАВИТЬ: Обновляем позицию узла в ReactFlow
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === id) {
-            return {
-              ...node,
-              position: {
-                x: newPosX,
-                y: newPosY
-              },
-              data: {
-                ...node.data,
-                width: newWidth,
-                height: newHeight
-              }
-            };
-          }
-          return node;
-        })
-      );
-    };
-      
-      const handleMouseUp = () => {
-        setIsResizing(false);
-        document.body.style.cursor = '';
-        
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-      
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      // Отменяем предыдущий запланированный кадр, если он есть
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
+  
+  // Планируем обновление на следующий кадр анимации
+  animationFrameId = requestAnimationFrame(() => {
+    setNodeSize({ width: newWidth, height: newHeight });
+    
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id) {
+          return {
+            ...node,
+            position: {
+              x: newPosX,
+              y: newPosY
+            },
+            data: {
+              ...node.data,
+              width: newWidth,
+              height: newHeight
+            }
+          };
+        }
+        return node;
+      })
+    );
+  });
+};
+
+const handleMouseUp = () => {
+  // Отменяем последний запланированный кадр
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
+  
+  setIsResizing(false);
+  document.body.style.cursor = '';
+  
+  document.removeEventListener('mousemove', handleMouseMove);
+  document.removeEventListener('mouseup', handleMouseUp);
+};
+
+document.addEventListener('mousemove', handleMouseMove);
+document.addEventListener('mouseup', handleMouseUp);
     };
 
     return (
@@ -1140,6 +1212,8 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
       
       setIsResizing(true);
       document.body.style.cursor = getCursor(direction);
+
+      let animationFrameId = null;
       
       const handleMouseMove = (moveEvent) => {
         const deltaX = moveEvent.clientX - startX;
@@ -1202,35 +1276,52 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
         newWidth = Math.min(999999, newWidth);
         newHeight = Math.min(99999, newHeight);
         
-        setNodeSize({ width: newWidth, height: newHeight });
-        
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id === id) {
-              return {
-                ...node,
-                position: { x: newPosX, y: newPosY },
-                data: {
-                  ...node.data,
-                  width: newWidth,
-                  height: newHeight
-                }
-              };
+        // Отменяем предыдущий запланированный кадр, если он есть
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
+  
+  // Планируем обновление на следующий кадр анимации
+  animationFrameId = requestAnimationFrame(() => {
+    setNodeSize({ width: newWidth, height: newHeight });
+    
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id) {
+          return {
+            ...node,
+            position: {
+              x: newPosX,
+              y: newPosY
+            },
+            data: {
+              ...node.data,
+              width: newWidth,
+              height: newHeight
             }
-            return node;
-          })
-        );
-      };
-      
-      const handleMouseUp = () => {
-        setIsResizing(false);
-        document.body.style.cursor = '';
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-      
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+          };
+        }
+        return node;
+      })
+    );
+  });
+};
+
+const handleMouseUp = () => {
+  // Отменяем последний запланированный кадр
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
+  
+  setIsResizing(false);
+  document.body.style.cursor = '';
+  
+  document.removeEventListener('mousemove', handleMouseMove);
+  document.removeEventListener('mouseup', handleMouseUp);
+};
+
+document.addEventListener('mousemove', handleMouseMove);
+document.addEventListener('mouseup', handleMouseUp);
     };
 
     return (
@@ -1577,7 +1668,6 @@ const Graph = () => {
           snapToGrid={false}
           snapGrid={[15, 15]}
           proOptions={{ hideAttribution: false }}
-          nodesResizable={true}
           onPaneContextMenu={(e) => e.preventDefault()}
           onNodeContextMenu={(e, node) => {
             e.preventDefault();

@@ -1,6 +1,7 @@
 /* CSS Variables for theming */
 :root {
   /* Light theme (default) */
+  --bg-primary: #ffffff;
   --bg-secondary: #e9ecef;
   --bg-card: #ffffff;
   --text-primary: #212529;
@@ -9,6 +10,11 @@
   --hover-bg: rgba(0, 0, 0, 0.05);
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   --accent-color: #4dabf7;
+
+  --radial-bg: #ffffff;
+  --radial-grid: #e0e0e0;
+  --radial-text: #333333;
+  --radial-border: #4dabf7;
 }
 
 [data-theme="dark"] {

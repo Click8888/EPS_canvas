@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as echarts from 'echarts/core';
+import { useTheme } from './ThemeContext';
 import {
   PolarComponent,
   TooltipComponent
@@ -173,7 +174,8 @@ const RadialChart = ({
   height = '600px',
   maxHistorySize = 200
 }) => {
-  // State
+  const { isDark } = useTheme();
+
   const chartRef = useRef(null);
   const [chartInstance, setChartInstance] = useState(null);
   const [option, setOption] = useState(null);
@@ -198,7 +200,7 @@ const RadialChart = ({
   // Базовая конфигурация ECharts
   const getBaseOption = useCallback(() => ({
     animation: false,
-    backgroundColor: 'transparent',
+    backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
     
     polar: {
       center: ['50%', '50%'],
@@ -213,15 +215,15 @@ const RadialChart = ({
       interval: 30,
       splitLine: {
         show: true,
-        lineStyle: { color: '#444', width: 1 }
+        lineStyle: { color: isDark ? '#444' : '#e0e0e0', width: 1 }
       },
       axisLine: {
         show: true,
-        lineStyle: { color: '#888', width: 2 }
+        lineStyle: { color: isDark ? '#888' : '#666', width: 2 }
       },
       axisLabel: {
         formatter: '{value}°',
-        color: '#fff',
+        color: isDark ? '#fff' : '#333',
         fontSize: 12
       }
     },
@@ -232,21 +234,26 @@ const RadialChart = ({
       max: autoScaleRange.max,
       splitLine: {
         show: true,
-        lineStyle: { color: '#444', width: 1 }
+        lineStyle: { color: isDark ? '#444' : '#e0e0e0', width: 1 }
       },
       axisLine: {
         show: true,
-        lineStyle: { color: '#888', width: 2 }
+        lineStyle: { color: isDark ? '#888' : '#666', width: 2 }
       },
       axisLabel: {
         formatter: (value) => value.toFixed(1),
-        color: '#fff',
+        color: isDark ? '#fff' : '#333',
         fontSize: 11
       }
     },
     
     tooltip: {
       trigger: 'item',
+      backgroundColor: isDark ? 'rgba(30, 30, 30, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+    borderColor: isDark ? '#444' : '#ddd',
+    textStyle: {
+      color: isDark ? '#fff' : '#333'
+    },
       formatter: (params) => {
         const v = params.data?.vector || currentVector;
         if (!v) return '';
@@ -262,7 +269,7 @@ const RadialChart = ({
         `;
       }
     }
-  }), [autoScaleRange.max, currentVector]);
+  }), [autoScaleRange.max, currentVector, isDark]);
 
   // Генерация опций для режима "Текущий вектор"
   const generateCurrentModeOption = useCallback(() => {
@@ -314,7 +321,7 @@ const RadialChart = ({
                 },
                 style: {
                   fill: color,
-                  stroke: '#fff',
+                  stroke: isDark ? '#fff' : '#333',
                   lineWidth: 2
                 }
               }
@@ -324,7 +331,7 @@ const RadialChart = ({
         data: [{ vector: currentVector }]
       }]
     };
-  }, [currentVector, autoScaleRange.max, getBaseOption]);
+  }, [currentVector, autoScaleRange.max, getBaseOption, isDark]);
 
   // Генерация опций для режима "История"
   const generateHistoryModeOption = useCallback(() => {
@@ -379,7 +386,7 @@ const RadialChart = ({
         data: vectorHistory.map(v => ({ vector: v }))
       }]
     };
-  }, [vectorHistory, autoScaleRange.max, getBaseOption]);
+  }, [vectorHistory, autoScaleRange.max, getBaseOption, isDark]);
 
   // Генерация опций для режима "След"
   const generateTrailModeOption = useCallback(() => {
@@ -470,7 +477,7 @@ const RadialChart = ({
     setCurrentVector(processed[processed.length - 1]);
     updateAutoScale(processed);
     
-  }, [vectorData, maxHistorySize, updateAutoScale]);
+  }, [vectorData, maxHistorySize, updateAutoScale, isDark]);
 
   // Обновление графика при изменении режима или данных
   useEffect(() => {

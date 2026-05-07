@@ -340,12 +340,14 @@ const Chart = ({
 }) => {
   const chartRef = useRef(null);
   const [option, setOption] = useState(defaultOption);
+  const chartInstanceRef = useRef(null);
   const [chartInstance, setChartInstance] = useState(null);
   const currentXRangeRef = useRef(null);
   // Состояние для отслеживания взаимодействия пользователя с графиком
   const [userInteracting, setUserInteracting] = useState(false);
   const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
   const [currentXRange, setCurrentXRange] = useState(null); // Текущий диапазон X после зума 
+  const prevLinesDataRef = useRef(null);
 
   // ДОБАВИТЬ: Получаем devicePixelRatio для высокого качества
   const dpr = window.devicePixelRatio || 1;
@@ -528,41 +530,39 @@ const calculateYRangeForSingleLine = (data, xMin, xMax) => {
 
   // Инициализация экземпляра графика
 useEffect(() => {
-  if (chartRef.current && !chartInstance) {
+  if (chartRef.current) {
     try {
       const instance = chartRef.current.getEchartsInstance();
-      if (instance) {
+      if (instance && !instance.isDisposed()) {
+        chartInstanceRef.current = instance; // ✅ Сохраняем в ref
         setChartInstance(instance);
-        instance.resize();
       }
     } catch (error) {
       console.error('Ошибка инициализации графика:', error);
     }
   }
 
-  // Очистка при размонтировании
+  // ✅ Правильная очистка при размонтировании
   return () => {
-    if (chartInstance && typeof chartInstance.dispose === 'function') {
-      try {
-        chartInstance.dispose();
-      } catch (error) {
-        console.error('Ошибка при очистке графика:', error);
-      }
+    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
+      chartInstanceRef.current.dispose(); // ✅ Явно уничтожаем экземпляр
     }
+    chartInstanceRef.current = null;
+    setChartInstance(null);
   };
-}, [chartInstance]);
+}, []);
 
-  // Начальная настройка графика
-  useEffect(() => {
-    if (!chartInstance) return;
-    
-    // Устанавливаем начальную конфигурацию графика
-    chartInstance.setOption(defaultOption, true);
+  // Начальная настройка графика ..........
+useEffect(() => {
+    // ✅ Используем ref и проверяем isDisposed
+    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
+      chartInstanceRef.current.setOption(defaultOption, true);
+    }
   }, [chartInstance]);
 
   // Отслеживание изменений диапазона X при зуме
 useEffect(() => {
-  if (!chartInstance) return;
+  if (!chartInstanceRef.current || chartInstanceRef.current.isDisposed()) return;
 
   const handleDataZoomEvent = (params) => {
   if (params.batch && params.batch.length > 0) {
@@ -620,17 +620,20 @@ useEffect(() => {
   }
 };
 
-  chartInstance.on('dataZoom', handleDataZoomEvent);
+chartInstanceRef.current.on('dataZoom', handleDataZoomEvent);
 
   return () => {
-    chartInstance.off('dataZoom', handleDataZoomEvent);
+    // ✅ Проверяем при очистке
+    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
+      chartInstanceRef.current.off('dataZoom', handleDataZoomEvent);
+    }
   };
 }, [chartInstance]);
 
 
   // Отслеживание взаимодействия пользователя с графиком
   useEffect(() => {
-    if (!chartInstance) return;
+    if (!chartInstanceRef.current || chartInstanceRef.current.isDisposed()) return;
 
     // Обработчик события dataZoom (когда пользователь масштабирует или двигает график)
     const handleDataZoom = (params) => {
@@ -651,19 +654,35 @@ useEffect(() => {
     };
 
     // Подписываемся на события
-    chartInstance.on('dataZoom', handleDataZoom);
-    chartInstance.on('restore', handleRestore);
+    chartInstanceRef.current.on('dataZoom', handleDataZoom);
+    chartInstanceRef.current.on('restore', handleRestore);
 
     // Отписываемся при размонтировании
     return () => {
-      chartInstance.off('dataZoom', handleDataZoom);
-      chartInstance.off('restore', handleRestore);
+      // ✅ Проверяем при очистке
+      if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
+        chartInstanceRef.current.off('dataZoom', handleDataZoom);
+        chartInstanceRef.current.off('restore', handleRestore);
+      }
     };
   }, [chartInstance]);
 
 // Обновление данных графика
 useEffect(() => {
-  if (!chartInstance) return;
+  if (!chartInstanceRef.current) return; //vvvv
+
+  // Проверяем, действительно ли изменились данные в линиях
+  const currentLinesData = JSON.stringify(lines.map(l => ({
+    id: l.id,
+    dataLength: l.data?.length,
+    lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
+  })));
+  
+  if (prevLinesDataRef.current === currentLinesData) {
+    // Данные не изменились, пропускаем обновление
+    return;
+  }
+  prevLinesDataRef.current = currentLinesData;
 
   // Форматируем данные всех линий
   const formattedLines = formatAllLinesForECharts(lines);
@@ -855,14 +874,18 @@ useEffect(() => {
     
     setOption(newOption);
     
-    if (chartInstance && typeof chartInstance.setOption === 'function') {
-      try {
-        chartInstance.setOption(newOption, false, false);
-      } catch (error) {
-        console.error('Ошибка обновления графика:', error);
-      }
+    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
+    try {
+      chartInstanceRef.current.setOption(newOption, false, false); // ✅ Исправлено
+    } catch (error) {
+      console.error('Ошибка обновления графика:', error);
     }
   }
+  }
+  // console.log(lines)
+  // console.log(chartData)
+  // console.log(activeGraphUpdate)
+  // console.log(chartInstance)
 
 }, [chartData, lines, activeGraphUpdate, chartInstance]);
 

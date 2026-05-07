@@ -835,13 +835,13 @@
    ============================================ */
 
 .radial-chart-node {
-  background: #1e1e1e;
-  border: 2px solid #4dabf7;
+  background: var(--radial-bg);
+  border: 2px solid var(--radial-border);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .radial-chart-node.resizing {
@@ -878,10 +878,10 @@
 .radial-chart-node .data-source-badge {
   font-size: 11px;
   padding: 3px 8px;
-  background: #1e1e1e;
+  background: var(--radial-bg);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  color: #aaa;
+  color: var(--text-secondary);
   font-family: 'Courier New', monospace;
 }
 
@@ -889,17 +889,19 @@
   display: flex;
   gap: 12px;
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-secondary);
   font-family: 'Courier New', monospace;
   flex-wrap: wrap;
 }
 
 .radial-chart-node .vector-stats span {
   padding: 4px 8px;
-  background: #1e1e1e;
+  background: var(--radial-bg);
   border-radius: 4px;
   border: 1px solid var(--border-color);
   white-space: nowrap;
+  color: var(--text-primary);
+  gap:12px;
 }
 
 .radial-chart-node .chart-controls {
@@ -913,7 +915,7 @@
 }
 
 .radial-chart-node .chart-controls .form-select {
-  background: #1e1e1e;
+  background: var(--radial-bg);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
   font-size: 12px;
@@ -1061,4 +1063,8 @@
 [data-theme="dark"] .react-flow__attribution {
   background-color: rgba(0, 0, 0, 0.5);
   color: var(--text-secondary);
+}
+
+[data-theme="dark"] .radial-chart-node {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }

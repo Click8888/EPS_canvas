@@ -1,27 +1,30 @@
 // setupResizeObserver.js – исправленная версия
 (function () {
-  // Сохраняем оригиналы
   const originalConsoleError = console.error;
   const originalConsoleWarn = console.warn;
 
-  // Глушим только сообщения о ResizeObserver
+  // ✅ Глушим ТОЛЬКО безопасные ошибки ResizeObserver loop
   console.error = function (...args) {
     const text = args.join(' ').toLowerCase();
     if (
-      text.includes('resizeobserver') ||
-      text.includes('loop completed') ||
-      text.includes('loop limit exceeded') ||
-      text.includes('008') ||
-      text.includes("couldn't create edge")
+      text.includes('resizeobserver loop completed') ||
+      text.includes('resizeobserver loop limit exceeded')
     ) {
-      return;
+      return; // Эти ошибки безопасны и не влияют на работу
     }
+    // ✅ НЕ глушим disposed и другие ошибки — они нужны для отладки
     originalConsoleError.apply(console, args);
   };
 
   console.warn = function (...args) {
     const text = args.join(' ').toLowerCase();
-    if (text.includes('resizeobserver')) return;
+    if (
+      text.includes('resizeobserver loop completed') ||
+      text.includes('resizeobserver loop limit exceeded')
+    ) {
+      return;
+    }
+    // ✅ Показываем все остальные предупреждения
     originalConsoleWarn.apply(console, args);
   };
 
