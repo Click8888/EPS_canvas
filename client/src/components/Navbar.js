@@ -1,3 +1,6 @@
+// Navbar.js - замените все className у полей ввода, убрав принудительный тёмный стиль
+// и добавив динамическое переключение
+
 import { useState, useEffect } from 'react';
 import { useTheme } from './ThemeContext';
 import './navbar.css';
@@ -15,14 +18,22 @@ const DEFAULT_FORM = {
 
 export default function Navbar() {
   const [showModal, setShowModal]           = useState(false);
-  const [status, setStatus]                 = useState(null);   // { connected, config }
+  const [status, setStatus]                 = useState(null);
   const [form, setForm]                     = useState(DEFAULT_FORM);
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState('');
   const [successMsg, setSuccessMsg]         = useState('');
   const { isDark, toggleTheme } = useTheme();
 
-  /* ───── загружаем статус при старте ───── */
+  // Динамические классы для полей ввода
+  const inputClass = `form-control form-control-sm ${isDark ? 'bg-dark text-light border-secondary' : 'bg-white text-dark border-secondary'}`;
+  const codeBgClass = isDark ? '#1a1a2e' : '#f8f9fa';
+  const modalContentClass = isDark ? 'modal-content bg-dark text-light' : 'modal-content';
+  const modalHeaderClass = isDark ? 'modal-header border-secondary' : 'modal-header';
+  const modalFooterClass = isDark ? 'modal-footer border-secondary' : 'modal-footer';
+  const labelClass = isDark ? 'form-label text-secondary small mb-1' : 'form-label text-muted small mb-1';
+  const closeBtnClass = isDark ? 'btn-close btn-close-white' : 'btn-close';
+
   useEffect(() => {
     fetchStatus();
   }, []);
@@ -46,7 +57,6 @@ export default function Navbar() {
     }
   };
 
-  /* ───── отправка формы ───── */
   const handleConnect = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -66,11 +76,9 @@ export default function Navbar() {
       } else {
         setSuccessMsg('Подключение установлено!');
         setStatus({ connected: true, config: data.config });
-        // Генерируем событие для обновления таблиц в Sidebar
         window.dispatchEvent(new CustomEvent('db-connection-changed', {
           detail: { config: data.config }
         }));
-
         setTimeout(() => closeModal(), 1500);
       }
     } catch {
@@ -88,22 +96,17 @@ export default function Navbar() {
 
   const field = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
-  /* ───── индикатор в Navbar ───── */
   const isConnected = status?.connected;
   const badgeLabel  = isConnected
     ? `${status.config?.dbname}@${status.config?.host}:${status.config?.port}`
     : 'Нет подключения';
 
-return (
+  return (
     <>
-      {/* ════════════════ NAVBAR ════════════════ */}
       <nav className={`navbar ${isDark ? 'navbar-dark bg-dark' : 'navbar-light bg-light'}`}>
         <div className="container-fluid">
           <a className="navbar-brand fw-bold" href="/">EPS</a>
-
           <div className="d-flex align-items-center gap-2">
-
-            {/* Индикатор статуса */}
             <span
               className={`badge d-flex align-items-center gap-1 px-2 py-1 ${
                 isConnected ? 'bg-success' : 'bg-danger'
@@ -115,8 +118,6 @@ return (
                 {badgeLabel}
               </span>
             </span>
-
-            {/* Кнопка подключения */}
             <button
               className="btn btn-outline-secondary btn-sm"
               onClick={() => setShowModal(true)}
@@ -124,14 +125,10 @@ return (
               <i className="bi bi-plug-fill me-1" />
               Подключиться к БД
             </button>
-
-            {/* Кнопка админки */}
             <a className="btn btn-outline-secondary btn-sm" href="/admin">
               <i className="bi bi-gear-fill me-1" />
               Админ-панель
             </a>
-
-              {/* Кнопка переключения темы */}
             <button
               className="btn btn-outline-secondary btn-sm"
               onClick={toggleTheme}
@@ -143,7 +140,6 @@ return (
         </div>
       </nav>
 
-      {/* ══════════════════ МОДАЛЬНОЕ ОКНО ══════════════════ */}
       {showModal && (
         <div
           className="modal show d-block"
@@ -151,26 +147,21 @@ return (
           onClick={(e) => e.target === e.currentTarget && closeModal()}
         >
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-
-              {/* Заголовок */}
-              <div className="modal-header">
+            <div className={modalContentClass}>
+              <div className={modalHeaderClass}>
                 <h5 className="modal-title">
                   <i className="bi bi-database-fill me-2 text-info" />
-                  Подключение к PostgreSQL
+                  Подключение к БД
                 </h5>
                 <button
                   type="button"
-                  className="btn-close btn-close-white"
+                  className={closeBtnClass}
                   onClick={closeModal}
                 />
               </div>
 
-              {/* Форма */}
               <form onSubmit={handleConnect}>
                 <div className="modal-body">
-
-                  {/* Алерты */}
                   {error && (
                     <div className="alert alert-danger py-2 mb-3">
                       <i className="bi bi-exclamation-triangle-fill me-2" />
@@ -185,29 +176,26 @@ return (
                   )}
 
                   <div className="row g-3">
-                    {/* Хост */}
                     <div className="col-8">
-                      <label className="form-label text-secondary small mb-1">
+                      <label className={labelClass}>
                         <i className="bi bi-hdd-network me-1" />Хост
                       </label>
                       <input
                         type="text"
-                        className="form-control form-control-sm bg-dark text-light border-secondary"
+                        className={inputClass}
                         value={form.host}
                         onChange={e => field('host', e.target.value)}
                         placeholder="localhost"
                         required
                       />
                     </div>
-
-                    {/* Порт */}
                     <div className="col-4">
-                      <label className="form-label text-secondary small mb-1">
+                      <label className={labelClass}>
                         <i className="bi bi-ethernet me-1" />Порт
                       </label>
                       <input
                         type="number"
-                        className="form-control form-control-sm bg-dark text-light border-secondary"
+                        className={inputClass}
                         value={form.port}
                         onChange={e => field('port', e.target.value)}
                         placeholder="5432"
@@ -215,45 +203,39 @@ return (
                         required
                       />
                     </div>
-
-                    {/* Пользователь */}
                     <div className="col-6">
-                      <label className="form-label text-secondary small mb-1">
+                      <label className={labelClass}>
                         <i className="bi bi-person-fill me-1" />Пользователь
                       </label>
                       <input
                         type="text"
-                        className="form-control form-control-sm bg-dark text-light border-secondary"
+                        className={inputClass}
                         value={form.user}
                         onChange={e => field('user', e.target.value)}
                         placeholder="postgres"
                         required
                       />
                     </div>
-
-                    {/* Пароль */}
                     <div className="col-6">
-                      <label className="form-label text-secondary small mb-1">
+                      <label className={labelClass}>
                         <i className="bi bi-key-fill me-1" />Пароль
                       </label>
                       <input
                         type="password"
-                        className="form-control form-control-sm bg-dark text-light border-secondary"
+                        className={inputClass}
                         value={form.password}
                         onChange={e => field('password', e.target.value)}
                         placeholder="••••••••"
                         autoComplete="current-password"
                       />
                     </div>
-
-                    {/* База данных */}
                     <div className="col-12">
-                      <label className="form-label text-secondary small mb-1">
+                      <label className={labelClass}>
                         <i className="bi bi-database me-1" />База данных
                       </label>
                       <input
                         type="text"
-                        className="form-control form-control-sm bg-dark text-light border-secondary"
+                        className={inputClass}
                         value={form.dbname}
                         onChange={e => field('dbname', e.target.value)}
                         placeholder="mydb"
@@ -262,20 +244,17 @@ return (
                     </div>
                   </div>
 
-                  {/* Строка подключения (для справки) */}
-                  <div className="mt-3 p-2 rounded" style={{ background: '#1a1a2e' }}>
+                  <div className="mt-3 p-2 rounded" style={{ background: codeBgClass }}>
                     <small className="text-secondary">
                       <i className="bi bi-link-45deg me-1" />
                       <code className="text-info" style={{ fontSize: '0.7rem' }}>
                         jdbc:postgresql://{form.user || '…'}@{form.host || '…'}:{form.port}/{form.dbname || '…'}
-                        {/*jdbc:postgresql://host:port/database*/}
                       </code>
                     </small>
                   </div>
                 </div>
 
-                {/* Кнопки */}
-                <div className="modal-footer border-secondary">
+                <div className={modalFooterClass}>
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
@@ -303,7 +282,6 @@ return (
                   </button>
                 </div>
               </form>
-
             </div>
           </div>
         </div>

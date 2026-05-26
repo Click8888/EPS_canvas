@@ -22,13 +22,6 @@ const Sidebar = ({
   const lastUpdateTimeRef = useRef(Date.now());
   const collapseThreshold = 80;
 
-  const [generationState, setGenerationState] = useState({
-    isGenerating: false,
-    isLoading: false,
-    interval: 50,
-    chartId: 'default-chart'
-  });
-
   const [chartLines, setChartLines] = useState({}); // { chartId: [lines] }
   const [nextLineIds, setNextLineIds] = useState({}); // { chartId: nextId }
   const [currentLines, setCurrentLines] = useState([]); // Линии текущего выбранного графика
@@ -84,7 +77,7 @@ const Sidebar = ({
 
   // Загрузка линий при выборе графика
   useEffect(() => {
-    if (selectedNode && selectedNode.type === 'chartNode') {
+    if (selectedNode && (selectedNode.type === 'chartNode' || selectedNode.type === 'radialChartNode')) {
       const chartId = selectedNode.id;
       
       // Если у графика еще нет линий, создаем одну линию по умолчанию
@@ -146,7 +139,7 @@ const Sidebar = ({
 
   //Добавить линию
   const addLine = () => {
-  if (!selectedNode || selectedNode.type !== 'chartNode') return;
+  if (!selectedNode || (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode')) return;
   
   const chartId = selectedNode.id;
   const currentNextId = nextLineIds[chartId] || 1;
@@ -178,7 +171,7 @@ const Sidebar = ({
 
   // Удалить линию
   const removeLine = (lineId) => {
-    if (!selectedNode || selectedNode.type !== 'chartNode') return;
+    if (!selectedNode || (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode')) return;
     
     const chartId = selectedNode.id;
     const updatedLines = (chartLines[chartId] || []).filter(line => line.id !== lineId);
@@ -193,7 +186,7 @@ const Sidebar = ({
 
   // Обновить параметры линии
   const updateLine = (lineId, field, value) => {
-    if (!selectedNode || selectedNode.type !== 'chartNode') return;
+    if (!selectedNode || (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode')) return;
     
     const chartId = selectedNode.id;
     const updatedLines = (chartLines[chartId] || []).map(line => 
@@ -386,120 +379,129 @@ const Sidebar = ({
     }
   };
 
+  // Загрузить данные для линии радиального графика (угол + длина)
+const loadRadialLineData = async (line) => {
+  if (!line.table || !line.angleAxis || !line.magnitudeAxis) {
+    return null;
+  }
+  
+  try {
+    const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
+    
+    const response = await fetch(`${API_BASE_URL}/execute-query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql })
+    });
+
+    if (!response.ok) throw new Error('Ошибка загрузки данных');
+    
+    const result = await response.json();
+    const data = result.data || result;
+    
+    // Форматируем данные для полярного графика
+    const formattedData = data
+      .filter(row => row[line.angleAxis] != null && row[line.magnitudeAxis] != null)
+      .map((row) => {
+        const angleValue = parseFloat(row[line.angleAxis]);
+        const magnitudeValue = parseFloat(row[line.magnitudeAxis]);
+        
+        return {
+          angle: isNaN(angleValue) ? 0 : angleValue,
+          value: isNaN(magnitudeValue) ? 0 : magnitudeValue,
+          originalAngle: row[line.angleAxis],
+          originalMagnitude: row[line.magnitudeAxis],
+          seriesId: line.id,
+          timestamp: Date.now()
+        };
+      });
+    
+    return formattedData;
+    
+  } catch (err) {
+    console.error(`Ошибка загрузки данных для радиальной линии ${line.id}:`, err);
+    return null;
+  }
+};
+
   // Применить все линии к графику
   const applyAllLines = async () => {
-    if (!selectedNode || currentLines.length === 0) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: 'Добавьте хотя бы одну линию'
-      }));
-      return;
-    }
-    
-    // Проверяем, что все линии заполнены
-    const invalidLines = currentLines.filter(line => !line.table || !line.xAxis || !line.yAxis);
-    if (invalidLines.length > 0) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: 'Заполните все параметры для каждой линии'
-      }));
-      return;
-    }
-    
-    setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
-    
-    try {
-      // Загружаем данные для всех линий параллельно
-      const loadPromises = currentLines.map(line => loadLineData(line));
-      const allData = await Promise.all(loadPromises);
-      
-      // Обновляем линии с загруженными данными
-      const updatedLines = currentLines.map((line, index) => ({
-        ...line,
-        data: allData[index] || []
-      }));
-      
-      // Сохраняем обновленные линии в chartLines
-      const chartId = selectedNode.id;
-      setChartLines(prev => ({
-        ...prev,
-        [chartId]: updatedLines
-      }));
-      setCurrentLines(updatedLines);
-      
-      // Отправляем данные в график
-      if (window.updateNodeData && selectedNode) {
-        window.updateNodeData(selectedNode.id, {
-          lines: updatedLines,  // Массив всех линий с данными
-          timestamp: Date.now()
-        });
+  if (!selectedNode || currentLines.length === 0) {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: 'Добавьте хотя бы одну линию'
+    }));
+    return;
+  }
+  
+  // Проверяем, что выбран узел графика (любого типа)
+  if (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode') {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: 'Выберите график для применения линий'
+    }));
+    return;
+  }
+  
+  // Проверяем, что все линии заполнены
+  const invalidLines = currentLines.filter(line => !line.table || !line.xAxis || !line.yAxis);
+  if (invalidLines.length > 0) {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: 'Заполните все параметры для каждой линии'
+    }));
+    return;
+  }
+  
+  setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
+  
+  try {
+    const loadPromises = currentLines.map(line => {
+      if (selectedNode.type === 'radialChartNode') {
+        return loadRadialLineData(line);
+      } else {
+        return loadLineData(line);
       }
-      
-      setChartParams(prev => ({
-        ...prev,
-        paramError: '',
-        isLoadingParams: false
-      }));
-      
-      console.log(`Загружено ${updatedLines.length} линий на график`);
-      
-    } catch (err) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: `Ошибка применения линий: ${err.message}`,
-        isLoadingParams: false
-      }));
-    }
-  };
-
-  // Функция запуска генерации
-  const startGeneration = async () => {
-    setGenerationState(prev => ({ ...prev, isLoading: true }));
+    });
+    const allData = await Promise.all(loadPromises);
     
-    try {
-      const response = await fetch(`${API_BASE_URL}/start-generation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          interval: generationState.interval,
-          chartId: generationState.chartId
-        })
-      });
-      
-      if (!response.ok) throw new Error('Ошибка запуска генерации');
-      
-      setGenerationState(prev => ({
-        ...prev,
-        isGenerating: true,
-        isLoading: false
-      }));
-    } catch (err) {
-      console.error('Ошибка запуска генерации:', err);
-      setGenerationState(prev => ({ ...prev, isLoading: false }));
-    }
-  };
-
-  // Функция остановки генерации
-  const stopGeneration = async () => {
-    setGenerationState(prev => ({ ...prev, isLoading: true }));
+    const updatedLines = currentLines.map((line, index) => ({
+      ...line,
+      data: allData[index] || []
+    }));
     
-    try {
-      const response = await fetch(`${API_BASE_URL}/stop-generation`, {
-        method: 'POST'
+    const chartId = selectedNode.id;
+    setChartLines(prev => ({
+      ...prev,
+      [chartId]: updatedLines
+    }));
+    setCurrentLines(updatedLines);
+    
+    // Отправляем данные в узел
+    if (window.updateNodeData && selectedNode) {
+      window.updateNodeData(selectedNode.id, {
+        lines: updatedLines,
+        timestamp: Date.now()
       });
-      
-      if (!response.ok) throw new Error('Ошибка остановки генерации');
-      
-      setGenerationState(prev => ({
-        ...prev,
-        isGenerating: false,
-        isLoading: false
-      }));
-    } catch (err) {
-      console.error('Ошибка остановки генерации:', err);
-      setGenerationState(prev => ({ ...prev, isLoading: false }));
     }
-  };
+    
+    setChartParams(prev => ({
+      ...prev,
+      paramError: '',
+      isLoadingParams: false
+    }));
+    
+    console.log(`Загружено ${updatedLines.length} линий на ${selectedNode.type} #${selectedNode.id}`);
+    
+  } catch (err) {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: `Ошибка применения линий: ${err.message}`,
+      isLoadingParams: false
+    }));
+  }
+};
+
 
   // Функция переключения сайдбара
   const toggleSidebar = useCallback(() => {
@@ -725,25 +727,6 @@ const Sidebar = ({
                       <i className="bi bi-arrow-clockwise"></i> Сброс
                     </button>
                   </div>
-                  <div className="btn-group w-100 mt-2" role="group">
-                    <button 
-                      className={`btn btn-sm mb-2 ${generationState.isGenerating ? 'btn-danger' : 'btn-primary'}`}
-                      onClick={generationState.isGenerating ? stopGeneration : startGeneration}
-                      disabled={generationState.isLoading}
-                    >
-                      {generationState.isLoading ? (
-                        <>
-                          <span className="spinner-border spinner-border-sm me-2" role="status"></span>
-                          {generationState.isGenerating ? 'Остановка...' : 'Запуск...'}
-                        </>
-                      ) : (
-                        <>
-                          <i className={`bi ${generationState.isGenerating ? 'bi-stop-circle' : 'bi-play-circle'} me-1`}></i>
-                          {generationState.isGenerating ? 'Остановить генерацию' : 'Начать генерацию данных'}
-                        </>
-                      )}
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -757,8 +740,10 @@ const Sidebar = ({
                   <div className="selected-node-info">
                     <div className="selected-node-header">
                       <span className="badge bg-primary">
-                        {selectedNode.type === 'dataSourceNode' && 'Источник'}
-                        {selectedNode.type === 'processorNode' && 'Обработчик'}
+                          {selectedNode.type === 'chartNode' && 'Линейный график'}
+                          {selectedNode.type === 'radialChartNode' && 'Радиальный график'}
+                          {selectedNode.type === 'dataSourceNode' && 'Источник'}
+                          {selectedNode.type === 'processorNode' && 'Обработчик'}
                       </span>
                       <span className="ms-2">{selectedNode.data.label}</span>
                     </div>
@@ -846,46 +831,90 @@ const Sidebar = ({
                                     </select>
                                   </div>
                                   
-                                  {/* Выбор осей X и Y */}
+                                  {/* Выбор осей - зависит от типа графика */}
                                   {line.table && tableColumnsCache[line.table] && (
                                     <>
-                                      <div className="mb-2">
-                                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось X:</label>
-                                        <select 
-                                          className="form-select form-select-sm"
-                                          value={line.xAxis}
-                                          onChange={(e) => updateLine(line.id, 'xAxis', e.target.value)}
-                                          disabled={chartParams.isLoadingParams}
-                                          style={{ fontSize: '11px' }}
-                                        >
-                                          <option value="">Выберите столбец...</option>
-                                          {tableColumnsCache[line.table]?.map(column => (
-                                            <option key={`${line.id}-x-${column}`} value={column}>{column}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      
-                                      <div className="mb-2">
-                                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось Y:</label>
-                                        <select 
-                                          className="form-select form-select-sm"
-                                          value={line.yAxis}
-                                          onChange={(e) => {
-                                            updateLine(line.id, 'yAxis', e.target.value);
-                                            // Автоматически обновляем название линии
-                                            if (e.target.value && line.name === `Линия ${line.id.split('-')[1]}`) {
-                                              updateLine(line.id, 'name', e.target.value);
-                                            }
-                                          }}
-                                          disabled={chartParams.isLoadingParams}
-                                          style={{ fontSize: '11px' }}
-                                        >
-                                          <option value="">Выберите столбец...</option>
-                                          {tableColumnsCache[line.table]?.map(column => (
-                                            <option key={`${line.id}-y-${column}`} value={column}>{column}</option>
-                                          ))}
-                                        </select>
-                                      </div>
+                                      {selectedNode.type === 'radialChartNode' ? (
+                                        // Поля для радиального графика
+                                        <>
+                                          <div className="mb-2">
+                                            <label className="form-label mb-1" style={{ fontSize: '11px' }}>Угол:</label>
+                                            <select 
+                                              className="form-select form-select-sm"
+                                              value={line.angleAxis || ''}
+                                              onChange={(e) => updateLine(line.id, 'angleAxis', e.target.value)}
+                                              disabled={chartParams.isLoadingParams}
+                                              style={{ fontSize: '11px' }}
+                                            >
+                                              <option value="">Выберите столбец...</option>
+                                              {tableColumnsCache[line.table]?.map(column => (
+                                                <option key={`${line.id}-angle-${column}`} value={column}>{column}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          
+                                          <div className="mb-2">
+                                            <label className="form-label mb-1" style={{ fontSize: '11px' }}>Длина:</label>
+                                            <select 
+                                              className="form-select form-select-sm"
+                                              value={line.magnitudeAxis || ''}
+                                              onChange={(e) => {
+                                                updateLine(line.id, 'magnitudeAxis', e.target.value);
+                                                if (e.target.value && line.name === `Линия ${line.id.split('-')[1]}`) {
+                                                  updateLine(line.id, 'name', e.target.value);
+                                                }
+                                              }}
+                                              disabled={chartParams.isLoadingParams}
+                                              style={{ fontSize: '11px' }}
+                                            >
+                                              <option value="">Выберите столбец...</option>
+                                              {tableColumnsCache[line.table]?.map(column => (
+                                                <option key={`${line.id}-magnitude-${column}`} value={column}>{column}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        // Поля для линейного графика
+                                        <>
+                                          <div className="mb-2">
+                                            <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось X:</label>
+                                            <select 
+                                              className="form-select form-select-sm"
+                                              value={line.xAxis}
+                                              onChange={(e) => updateLine(line.id, 'xAxis', e.target.value)}
+                                              disabled={chartParams.isLoadingParams}
+                                              style={{ fontSize: '11px' }}
+                                            >
+                                              <option value="">Выберите столбец...</option>
+                                              {tableColumnsCache[line.table]?.map(column => (
+                                                <option key={`${line.id}-x-${column}`} value={column}>{column}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          
+                                          <div className="mb-2">
+                                            <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось Y:</label>
+                                            <select 
+                                              className="form-select form-select-sm"
+                                              value={line.yAxis}
+                                              onChange={(e) => {
+                                                updateLine(line.id, 'yAxis', e.target.value);
+                                                if (e.target.value && line.name === `Линия ${line.id.split('-')[1]}`) {
+                                                  updateLine(line.id, 'name', e.target.value);
+                                                }
+                                              }}
+                                              disabled={chartParams.isLoadingParams}
+                                              style={{ fontSize: '11px' }}
+                                            >
+                                              <option value="">Выберите столбец...</option>
+                                              {tableColumnsCache[line.table]?.map(column => (
+                                                <option key={`${line.id}-y-${column}`} value={column}>{column}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </>
+                                      )}
                                     </>
                                   )}
                                 </div>

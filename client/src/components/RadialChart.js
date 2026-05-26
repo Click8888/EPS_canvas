@@ -5,7 +5,7 @@ import {
   PolarComponent,
   TooltipComponent
 } from 'echarts/components';
-import { CustomChart, LineChart, ScatterChart } from 'echarts/charts';
+import { CustomChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
 import ReactECharts from "echarts-for-react";
 
@@ -13,119 +13,10 @@ echarts.use([
   PolarComponent,
   TooltipComponent,
   CustomChart,
-  LineChart,
-  ScatterChart,
   CanvasRenderer
 ]);
 
-// Компонент редактируемого заголовка
-const EditableTitle = ({ value, onSave, isSelected }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  const handleSave = () => {
-    if (editValue.trim() && editValue !== value) {
-      onSave(editValue.trim());
-    }
-    setIsEditing(false);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleSave();
-    } else if (e.key === 'Escape') {
-      setEditValue(value);
-      setIsEditing(false);
-    }
-  };
-
-  const handleBlur = () => {
-    handleSave();
-  };
-
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        className="chart-title-input"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#2d2d2d',
-          border: '1px solid #4dabf7',
-          borderRadius: '4px',
-          color: '#fff',
-          fontSize: '14px',
-          fontWeight: '500',
-          padding: '2px 8px',
-          outline: 'none',
-          width: 'auto',
-          minWidth: '100px'
-        }}
-      />
-    );
-  }
-
-  return (
-    <div 
-      className="chart-title-display"
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        if (isSelected) {
-          setIsEditing(true);
-        }
-      }}
-      style={{ cursor: isSelected ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center' }}
-      title={isSelected ? "Нажмите для переименования" : ""}
-    >
-      <span>{value}</span>
-      {isSelected && (
-        <i 
-          className="bi bi-pencil-square ms-2" 
-          style={{ fontSize: '12px', opacity: 0.6, cursor: 'pointer' }}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsEditing(true);
-          }}
-        />
-      )}
-    </div>
-  );
-};
-
-// Функция преобразования X/Y в полярные координаты
-const convertToPolar = (x, y) => {
-  const angle = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-  const magnitude = Math.sqrt(x * x + y * y);
-  return { angle, magnitude };
-};
-
-// Функция расчета наконечника стрелки
-const calculateArrowHead = (endPoint, angleInDegrees, size = 10) => {
-  const angleRad = angleInDegrees * Math.PI / 180;
-  const arrowAngle = 25 * Math.PI / 180;
-  
-  const x1 = endPoint[0] - size * Math.cos(angleRad - arrowAngle);
-  const y1 = endPoint[1] - size * Math.sin(angleRad - arrowAngle);
-  const x2 = endPoint[0] - size * Math.cos(angleRad + arrowAngle);
-  const y2 = endPoint[1] - size * Math.sin(angleRad + arrowAngle);
-  
-  return [[endPoint[0], endPoint[1]], [x1, y1], [x2, y2]];
-};
-
-// Функция преобразования HEX в RGB
+// Функция интерполяции цветов
 const hexToRgb = (hex) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? {
@@ -135,7 +26,6 @@ const hexToRgb = (hex) => {
   } : null;
 };
 
-// Функция интерполяции цветов
 const interpolateColor = (color1, color2, t) => {
   const c1 = hexToRgb(color1);
   const c2 = hexToRgb(color2);
@@ -147,293 +37,415 @@ const interpolateColor = (color1, color2, t) => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
-// Функция получения цвета по величине (градиент)
-const getColorByMagnitude = (magnitude, maxMagnitude) => {
-  if (maxMagnitude === 0) return '#4dabf7';
-  const ratio = Math.min(magnitude / maxMagnitude, 1);
-  
-  if (ratio < 0.25) {
-    const t = ratio / 0.25;
-    return interpolateColor('#4dabf7', '#33d9b2', t);
-  } else if (ratio < 0.5) {
-    const t = (ratio - 0.25) / 0.25;
-    return interpolateColor('#33d9b2', '#ffb800', t);
-  } else if (ratio < 0.75) {
-    const t = (ratio - 0.5) / 0.25;
-    return interpolateColor('#ffb800', '#ff8c00', t);
-  } else {
-    const t = (ratio - 0.75) / 0.25;
-    return interpolateColor('#ff8c00', '#ff6b6b', t);
+// Функция получения цвета с приоритетом пользовательского цвета
+const getVectorColor = (vector, maxMagnitude) => {
+  // Если задан пользовательский цвет, используем его
+  if (vector.color && vector.color !== '#4dabf7') {
+    return vector.color;
   }
+  
+  // Иначе вычисляем цвет на основе величины
+  if (maxMagnitude === 0) return '#4dabf7';
+  const ratio = Math.min(vector.magnitude / maxMagnitude, 1);
+  
+  if (ratio < 0.25) return interpolateColor('#4dabf7', '#33d9b2', ratio / 0.25);
+  else if (ratio < 0.5) return interpolateColor('#33d9b2', '#ffb800', (ratio - 0.25) / 0.25);
+  else if (ratio < 0.75) return interpolateColor('#ffb800', '#ff8c00', (ratio - 0.5) / 0.25);
+  else return interpolateColor('#ff8c00', '#ff6b6b', (ratio - 0.75) / 0.25);
+};
+
+// Компонент легенды
+const Legend = ({ vectors, maxMagnitude, isDark }) => {
+  const dpr = window.devicePixelRatio || 1;
+  const isHighDPI = dpr >= 2;
+
+  const legendStyles = {
+    position: 'absolute',
+    top: '12px',
+    right: '12px',
+    backgroundColor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+    borderRadius: '12px',
+    padding: '14px',
+    minWidth: '240px',
+    maxWidth: '320px',
+    maxHeight: 'calc(100% - 24px)',
+    overflowY: 'auto',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}`,
+    boxShadow: isHighDPI
+      ? `0 4px 24px rgba(0,0,0,0.15), 0 0 0 0.5px ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`
+      : `0 4px 24px rgba(0,0,0,0.15)`,
+    zIndex: 10,
+    fontSize: '12px',
+    pointerEvents: 'none',
+    fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif`,
+    letterSpacing: '0.01em',
+    transform: 'translateZ(0)',
+    willChange: 'transform',
+    WebkitFontSmoothing: 'antialiased',
+    MozOsxFontSmoothing: 'grayscale',
+    textRendering: 'geometricPrecision'
+  };
+
+  if (!vectors || vectors.length === 0) {
+    return (
+      <div className="radial-legend" style={legendStyles}>
+        <div style={{
+          textAlign: 'center',
+          color: isDark ? '#aaa' : '#666',
+          padding: '24px 16px'
+        }}>
+          <i className="bi bi-info-circle" style={{ fontSize: '32px', display: 'block', marginBottom: '12px', opacity: 0.6 }}></i>
+          <div style={{ fontSize: '13px', fontWeight: 500 }}>Нет данных</div>
+          <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>Добавьте векторы для отображения</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="radial-legend" style={legendStyles}>
+      <div style={{
+        fontWeight: '600',
+        marginBottom: '12px',
+        paddingBottom: '8px',
+        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+        color: isDark ? '#fff' : '#333',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '13px'
+      }}>
+        <i className="bi bi-list-ul" style={{ fontSize: '14px' }}></i>
+        <span>Векторы</span>
+        <span style={{
+          marginLeft: 'auto',
+          fontSize: '11px',
+          backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
+          padding: '2px 8px',
+          borderRadius: '20px',
+          fontWeight: '500'
+        }}>
+          {vectors.length}
+        </span>
+      </div>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {vectors.map((vector, index) => {
+          const color = getVectorColor(vector, maxMagnitude);
+          
+          return (
+            <div 
+              key={vector.id || index}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                padding: '10px',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+                borderRadius: '8px',
+                borderLeft: `3px solid ${color}`,
+                transition: 'all 0.15s ease',
+                transform: 'translateZ(0)'
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontWeight: '500'
+              }}>
+                <div style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '2px',
+                  backgroundColor: color,
+                  boxShadow: isHighDPI ? `0 0 0 0.5px ${isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}` : 'none'
+                }}></div>
+                <span style={{ 
+                  color: isDark ? '#fff' : '#333', 
+                  flex: 1,
+                  fontSize: '12px',
+                  fontWeight: '500'
+                }}>
+                  {vector.name || `Вектор ${index + 1}`}
+                </span>
+              </div>
+              
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr',
+                gap: '6px 12px',
+                paddingLeft: '20px',
+                fontSize: '11px'
+              }}>
+                <div style={{ color: isDark ? '#999' : '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <i className="bi bi-compass" style={{ fontSize: '10px' }}></i>
+                  <span>Угол:</span>
+                </div>
+                <div style={{ color: isDark ? '#ddd' : '#555', fontWeight: '500', fontFamily: 'monospace' }}>
+                  {vector.angle.toFixed(1)}°
+                </div>
+                
+                <div style={{ color: isDark ? '#999' : '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <i className="bi bi-arrow-right" style={{ fontSize: '10px' }}></i>
+                  <span>Длина:</span>
+                </div>
+                <div style={{ color: isDark ? '#ddd' : '#555', fontWeight: '500', fontFamily: 'monospace' }}>
+                  {vector.magnitude.toFixed(4)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 const RadialChart = ({ 
-  vectorData = [],
-  mode = 'current',
+  lines = [],
   width = '100%',
   height = '600px',
-  maxHistorySize = 200
+  isAutoUpdate = false,
 }) => {
   const { isDark } = useTheme();
-
   const chartRef = useRef(null);
   const [chartInstance, setChartInstance] = useState(null);
   const [option, setOption] = useState(null);
-  const [currentVector, setCurrentVector] = useState(null);
-  const [vectorHistory, setVectorHistory] = useState([]);
-  const [autoScaleRange, setAutoScaleRange] = useState({ min: 0, max: 10 });
   const dpr = window.devicePixelRatio || 1;
+  const isHighDPI = dpr >= 2;
+  
+  // Сохраняем векторы в ref для доступа в renderItem и tooltip
+  const vectorsRef = useRef([]);
+  const maxMagRef = useRef(100);
 
-  // Функция автомасштабирования
-  const updateAutoScale = useCallback((vectors) => {
-    if (!vectors || vectors.length === 0) return;
+  // Преобразование данных линий в векторы
+  const processLinesToVectors = useCallback(() => {
+    if (!lines || lines.length === 0) return [];
     
-    const magnitudes = vectors.map(v => v.magnitude);
-    const maxMagnitude = Math.max(...magnitudes);
+    const vectors = [];
     
-    setAutoScaleRange({
-      min: 0,
-      max: maxMagnitude * 1.2
+    lines.forEach(line => {
+      if (!line.data || !Array.isArray(line.data) || line.data.length === 0) return;
+      
+      const lastPoint = line.data[line.data.length - 1];
+      
+      let angle, magnitude;
+      
+      if (lastPoint.angle !== undefined) {
+        angle = parseFloat(lastPoint.angle);
+        magnitude = parseFloat(lastPoint.value !== undefined ? lastPoint.value : lastPoint.magnitude);
+      } else if (lastPoint.x !== undefined) {
+        angle = parseFloat(lastPoint.x);
+        magnitude = parseFloat(lastPoint.y);
+      } else {
+        return;
+      }
+      
+      if (!isNaN(angle) && !isNaN(magnitude)) {
+        vectors.push({
+          id: line.id,
+          name: line.name,
+          color: line.color || '#4dabf7', // Сохраняем пользовательский цвет
+          angle: angle % 360,
+          magnitude: Math.abs(magnitude),
+        });
+      }
     });
+    
+    return vectors;
+  }, [lines]);
+
+  // Вычисление максимальной длины с запасом
+  const getMaxMagnitude = useCallback((vectors) => {
+    if (vectors.length === 0) return 100;
+    
+    const maxMagnitude = Math.max(...vectors.map(v => v.magnitude));
+    if (maxMagnitude === 0) return 100;
+    
+    return maxMagnitude * 1.25;
   }, []);
 
-  // Базовая конфигурация ECharts
-  const getBaseOption = useCallback(() => ({
-    animation: false,
-    backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
+  // Генерация опций графика
+  const generateOption = useCallback(() => {
+    const vectors = processLinesToVectors();
+    const maxMag = getMaxMagnitude(vectors);
     
-    polar: {
-      center: ['50%', '50%'],
-      radius: '85%'
-    },
+    // Сохраняем в ref для использования в tooltip и renderItem
+    vectorsRef.current = vectors;
+    maxMagRef.current = maxMag;
     
-    angleAxis: {
-      type: 'value',
-      startAngle: 0,
-      min: 0,
-      max: 360,
-      interval: 30,
-      splitLine: {
-        show: true,
-        lineStyle: { color: isDark ? '#444' : '#e0e0e0', width: 1 }
+    const baseOption = {
+      animation: false,
+      backgroundColor: 'transparent',
+      polar: {
+        center: ['50%', '50%'],
+        radius: ['0%', '90%']
       },
-      axisLine: {
-        show: true,
-        lineStyle: { color: isDark ? '#888' : '#666', width: 2 }
-      },
-      axisLabel: {
-        formatter: '{value}°',
-        color: isDark ? '#fff' : '#333',
-        fontSize: 12
-      }
-    },
-    
-    radiusAxis: {
-      type: 'value',
-      min: 0,
-      max: autoScaleRange.max,
-      splitLine: {
-        show: true,
-        lineStyle: { color: isDark ? '#444' : '#e0e0e0', width: 1 }
-      },
-      axisLine: {
-        show: true,
-        lineStyle: { color: isDark ? '#888' : '#666', width: 2 }
-      },
-      axisLabel: {
-        formatter: (value) => value.toFixed(1),
-        color: isDark ? '#fff' : '#333',
-        fontSize: 11
-      }
-    },
-    
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: isDark ? 'rgba(30, 30, 30, 0.9)' : 'rgba(255, 255, 255, 0.9)',
-    borderColor: isDark ? '#444' : '#ddd',
-    textStyle: {
-      color: isDark ? '#fff' : '#333'
-    },
-      formatter: (params) => {
-        const v = params.data?.vector || currentVector;
-        if (!v) return '';
-        
-        return `
-          <div style="padding: 8px;">
-            <strong>Вектор</strong><br/>
-            X: ${v.x.toFixed(3)}<br/>
-            Y: ${v.y.toFixed(3)}<br/>
-            Величина: ${v.magnitude.toFixed(3)}<br/>
-            Угол: ${v.angle.toFixed(1)}°
-          </div>
-        `;
-      }
-    }
-  }), [autoScaleRange.max, currentVector, isDark]);
-
-  // Генерация опций для режима "Текущий вектор"
-  const generateCurrentModeOption = useCallback(() => {
-    if (!currentVector) return getBaseOption();
-    
-    const maxMag = autoScaleRange.max;
-    const color = getColorByMagnitude(currentVector.magnitude, maxMag);
-    
-    return {
-      ...getBaseOption(),
-      series: [{
-        type: 'custom',
-        coordinateSystem: 'polar',
-        renderItem: (params, api) => {
-          const center = api.coord([0, 0]);
-          const end = api.coord([currentVector.angle, currentVector.magnitude]);
-          
-          return {
-            type: 'group',
-            children: [
-              {
-                type: 'line',
-                shape: {
-                  x1: center[0],
-                  y1: center[1],
-                  x2: end[0],
-                  y2: end[1]
-                },
-                style: {
-                  stroke: color,
-                  lineWidth: 3
-                }
-              },
-              {
-                type: 'polygon',
-                shape: {
-                  points: calculateArrowHead(end, currentVector.angle, 15)
-                },
-                style: {
-                  fill: color
-                }
-              },
-              {
-                type: 'circle',
-                shape: {
-                  cx: end[0],
-                  cy: end[1],
-                  r: 6
-                },
-                style: {
-                  fill: color,
-                  stroke: isDark ? '#fff' : '#333',
-                  lineWidth: 2
-                }
-              }
-            ]
-          };
+      angleAxis: {
+        type: 'value',
+        startAngle: 0,
+        min: 0,
+        max: 360,
+        interval: 30,
+        clockwise: false,
+        splitLine: {
+          show: true,
+          lineStyle: { color: isDark ? '#444' : '#e0e0e0', width: isHighDPI ? 1 : 1.5 }
         },
-        data: [{ vector: currentVector }]
-      }]
-    };
-  }, [currentVector, autoScaleRange.max, getBaseOption, isDark]);
-
-  // Генерация опций для режима "История"
-  const generateHistoryModeOption = useCallback(() => {
-    if (!vectorHistory || vectorHistory.length === 0) return getBaseOption();
-    
-    const maxMag = autoScaleRange.max;
-    
-    return {
-      ...getBaseOption(),
-      series: [{
-        type: 'custom',
-        coordinateSystem: 'polar',
-        renderItem: (params, api) => {
-          const index = params.dataIndex;
-          const vector = vectorHistory[index];
-          const opacity = (index + 1) / vectorHistory.length;
-          const color = getColorByMagnitude(vector.magnitude, maxMag);
-          
-          const center = api.coord([0, 0]);
-          const end = api.coord([vector.angle, vector.magnitude]);
-          
-          return {
-            type: 'group',
-            children: [
-              {
-                type: 'line',
-                shape: {
-                  x1: center[0],
-                  y1: center[1],
-                  x2: end[0],
-                  y2: end[1]
-                },
-                style: {
-                  stroke: color,
-                  lineWidth: 2,
-                  opacity: opacity * 0.7
-                }
-              },
-              {
-                type: 'polygon',
-                shape: {
-                  points: calculateArrowHead(end, vector.angle, 10)
-                },
-                style: {
-                  fill: color,
-                  opacity: opacity * 0.7
-                }
-              }
-            ]
-          };
+        axisLine: {
+          show: true,
+          lineStyle: { color: isDark ? '#888' : '#666', width: isHighDPI ? 1.5 : 2 }
         },
-        data: vectorHistory.map(v => ({ vector: v }))
-      }]
-    };
-  }, [vectorHistory, autoScaleRange.max, getBaseOption, isDark]);
-
-  // Генерация опций для режима "След"
-  const generateTrailModeOption = useCallback(() => {
-    if (!vectorHistory || vectorHistory.length === 0 || !currentVector) return getBaseOption();
-    
-    const maxMag = autoScaleRange.max;
-    const currentColor = getColorByMagnitude(currentVector.magnitude, maxMag);
-    
-    return {
-      ...getBaseOption(),
-      series: [
-        {
-          type: 'line',
-          coordinateSystem: 'polar',
-          data: vectorHistory.map(v => [v.angle, v.magnitude]),
-          lineStyle: {
-            color: '#4dabf7',
-            width: 2
-          },
-          showSymbol: false
-        },
-        {
-          type: 'scatter',
-          coordinateSystem: 'polar',
-          data: vectorHistory.map((v, i) => ({
-            value: [v.angle, v.magnitude],
-            itemStyle: {
-              color: getColorByMagnitude(v.magnitude, maxMag),
-              opacity: (i + 1) / vectorHistory.length
-            }
-          })),
-          symbolSize: 4
-        },
-        {
-          type: 'scatter',
-          coordinateSystem: 'polar',
-          data: [[currentVector.angle, currentVector.magnitude]],
-          symbolSize: 12,
-          itemStyle: {
-            color: currentColor,
-            borderColor: '#fff',
-            borderWidth: 2
-          }
+        axisLabel: {
+          formatter: '{value}°',
+          color: isDark ? '#fff' : '#333',
+          fontSize: isHighDPI ? 11 : 12,
+          margin: 12,
+          fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
         }
-      ]
+      },
+      radiusAxis: {
+        type: 'value',
+        min: 0,
+        max: maxMag,
+        scale: false,
+        splitNumber: 4,
+        splitLine: {
+          show: true,
+          lineStyle: { color: isDark ? '#444' : '#e0e0e0', width: isHighDPI ? 0.5 : 1 }
+        },
+        axisLine: {
+          show: true,
+          lineStyle: { color: isDark ? '#888' : '#666', width: isHighDPI ? 1.5 : 2 }
+        },
+        axisLabel: {
+          formatter: (value) => value.toFixed(2),
+          color: isDark ? '#fff' : '#333',
+          fontSize: isHighDPI ? 10 : 11,
+          margin: 12,
+          fontFamily: `'SF Mono', 'Monaco', 'Cascadia Code', monospace`
+        }
+      },
+      
+      tooltip: !isAutoUpdate ? {
+        trigger: 'item',
+        enterable: true,
+        backgroundColor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+        borderColor: isDark ? '#444' : '#ddd',
+        borderWidth: 1,
+        textStyle: {
+          color: isDark ? '#fff' : '#333',
+          fontSize: 12,
+          fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+        },
+        extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 8px; backdrop-filter: blur(4px);',
+        formatter: (params) => {
+          if (!params || params.dataIndex === undefined) return '';
+          
+          const vector = vectorsRef.current[params.seriesIndex];
+          if (!vector) return '';
+          
+          return `
+            <div style="padding: 8px 12px;">
+              <strong style="font-size: 13px;">${vector.name || 'Без названия'}</strong><br/>
+              <span style="font-size: 11px; opacity: 0.7;">Угол:</span> <strong>${vector.angle.toFixed(1)}°</strong><br/>
+              <span style="font-size: 11px; opacity: 0.7;">Длина:</span> <strong>${vector.magnitude.toFixed(4)}</strong>
+            </div>
+          `;
+        }
+      } : { show: false },
     };
-  }, [vectorHistory, currentVector, autoScaleRange.max, getBaseOption]);
+
+    // Создаем серии для каждого вектора
+    const series = vectors.map((vector, index) => {
+      // Используем getVectorColor для получения цвета (с приоритетом пользовательского)
+      const color = getVectorColor(vector, maxMag);
+      
+      return {
+        type: 'custom',
+        coordinateSystem: 'polar',
+        name: vector.name || 'Без названия',
+        data: [[vector.angle, vector.magnitude]],
+        itemStyle: {
+          color: color
+        },
+        renderItem: (params, api) => {
+          const angle = api.value(0);
+          const magnitude = api.value(1);
+          
+          const center = api.coord([0, 0]);
+          
+          const chartWidth = api.getWidth();
+          const chartHeight = api.getHeight();
+          
+          const polarRadius = Math.min(chartWidth, chartHeight) * 0.4;
+          
+          const angleRad = (angle * Math.PI) / 180;
+          
+          const pixelLength = (magnitude / maxMag) * polarRadius;
+          const clampedLength = Math.min(pixelLength, polarRadius * 0.95);
+          
+          const endX = center[0] + clampedLength * Math.cos(angleRad);
+          const endY = center[1] - clampedLength * Math.sin(angleRad);
+          
+          const arrowSize = isHighDPI ? 8 : 10;
+          
+          return {
+            type: 'group',
+            children: [
+              {
+                type: 'line',
+                shape: {
+                  x1: center[0],
+                  y1: center[1],
+                  x2: endX,
+                  y2: endY
+                },
+                style: {
+                  stroke: color,
+                  lineWidth: isHighDPI ? 2.5 : 3,
+                  opacity: 0.9
+                },
+                emphasis: {
+                  style: {
+                    lineWidth: isHighDPI ? 4 : 5,
+                    opacity: 1,
+                    shadowBlur: isHighDPI ? 4 : 8,
+                    shadowColor: color
+                  }
+                }
+              },
+              {
+                type: 'polygon',
+                shape: {
+                  points: [
+                    [endX, endY],
+                    [endX - arrowSize * Math.cos(angleRad - 0.5), endY + arrowSize * Math.sin(angleRad - 0.5)],
+                    [endX - arrowSize * Math.cos(angleRad + 0.5), endY + arrowSize * Math.sin(angleRad + 0.5)]
+                  ]
+                },
+                style: {
+                  fill: color,
+                  stroke: color,
+                  lineWidth: isHighDPI ? 0.5 : 1,
+                  shadowBlur: isHighDPI ? 2 : 4,
+                  shadowColor: color
+                }
+              }
+            ]
+          };
+        }
+      };
+    });
+
+    return {
+      ...baseOption,
+      series
+    };
+  }, [lines, processLinesToVectors, getMaxMagnitude, isDark, isAutoUpdate, isHighDPI]);
 
   // Инициализация графика
   useEffect(() => {
@@ -454,74 +466,48 @@ const RadialChart = ({
         try {
           chartInstance.dispose();
         } catch (error) {
-          console.error('Ошибка при очистке радиального графика:', error);
+          console.error('Ошибка при очистке:', error);
         }
       }
     };
   }, [chartInstance]);
 
-  // Обработка входящих данных
-  useEffect(() => {
-    if (!vectorData || vectorData.length === 0) return;
-    
-    const limitedData = vectorData.slice(-maxHistorySize);
-    
-    const processed = limitedData.map(v => ({
-      x: v.x,
-      y: v.y,
-      ...convertToPolar(v.x, v.y),
-      timestamp: v.timestamp
-    }));
-    
-    setVectorHistory(processed);
-    setCurrentVector(processed[processed.length - 1]);
-    updateAutoScale(processed);
-    
-  }, [vectorData, maxHistorySize, updateAutoScale, isDark]);
-
-  // Обновление графика при изменении режима или данных
+  // Обновление графика при изменении данных
   useEffect(() => {
     if (!chartInstance) return;
     
-    let newOption;
-    
-    switch (mode) {
-      case 'current':
-        newOption = generateCurrentModeOption();
-        break;
-      case 'history':
-        newOption = generateHistoryModeOption();
-        break;
-      case 'trail':
-        newOption = generateTrailModeOption();
-        break;
-      default:
-        newOption = generateCurrentModeOption();
-    }
-    
+    const newOption = generateOption();
     setOption(newOption);
     
-    if (chartInstance && typeof chartInstance.setOption === 'function') {
-      try {
-        chartInstance.setOption(newOption, true, false);
-      } catch (error) {
-        console.error('Ошибка обновления радиального графика:', error);
-      }
+    if (chartInstance.resize) {
+      chartInstance.resize();
     }
-  }, [mode, currentVector, vectorHistory, chartInstance, generateCurrentModeOption, generateHistoryModeOption, generateTrailModeOption]);
+  }, [lines, chartInstance, generateOption]);
+
+  // Получаем векторы для легенды
+  const vectors = processLinesToVectors();
+  const maxMag = getMaxMagnitude(vectors);
 
   return (
-    <div style={{ width, height }}>
+    <div style={{ 
+      width, 
+      height, 
+      position: 'relative',
+      backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
+      borderRadius: '12px',
+      overflow: 'hidden'
+    }}>
+      <Legend vectors={vectors} maxMagnitude={maxMag} isDark={isDark} />
+      
       <ReactECharts
         ref={chartRef}
-        option={option || getBaseOption()}
+        option={option || {}}
         notMerge={true}
-        lazyUpdate={true}
-        style={{ width, height }}
+        lazyUpdate={false}
+        style={{ width: '100%', height: '100%' }}
         opts={{ 
           renderer: 'canvas',
-          devicePixelRatio: dpr * 2,
-          cursor: 'grab'
+          devicePixelRatio: Math.min(dpr * 2, 4)
         }}
       />
     </div>

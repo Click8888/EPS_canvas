@@ -15,7 +15,7 @@ import (
 type RadialMeasurement struct {
 	Time   time.Time
 	Angle  float64
-	Lenght float64 // Обратите внимание: в БД поле называется "lenght" (с опечаткой)
+	Lenght float64 // В БД поле называется "lenght"
 }
 
 func (RadialMeasurement) TableName() string {
@@ -30,9 +30,9 @@ func main() {
 		log.Fatalf("Ошибка подключения к БД: %v", err)
 	}
 
-	fmt.Println("=== Генератор данных для таблицы radial ===")
-	fmt.Println("Угол: колеблется незначительно, меняется каждые 5 секунд")
-	fmt.Println("Длина: синусоида с шумом в диапазоне (-50, 50)")
+	fmt.Println("=== Генератор данных для таблицы radial (стабильная версия) ===")
+	fmt.Println("Угол: 15 сек колеблется в пределах ±1°, затем сдвиг на 8-10°")
+	fmt.Println("Длина: медленная синусоида в диапазоне (35-50) с минимальным шумом")
 	fmt.Println("Частота: каждые 20 миллисекунд")
 	fmt.Println("Нажмите Ctrl+C для остановки")
 	fmt.Println()
@@ -44,31 +44,58 @@ func main() {
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 
-	// Переменные для генерации угла
+	// ========== ПАРАМЕТРЫ ГЕНЕРАЦИИ УГЛА ==========
 	baseAngle := rand.Float64() * 360.0        // Начальный базовый угол (0-360°)
-	lastAngleSwitch := time.Now()              // Время последней смены базового угла
-	angleSwitchInterval := 5 * time.Second     // Интервал смены базового угла
-
-	// Переменные для генерации длины (синусоида)
-	startTime := time.Now()                    // Начальное время для синусоиды
-	frequency := 0.1                           // Частота синусоиды в Hz (период 10 секунд)
+	lastAngleShift := time.Now()               // Время последнего сдвига угла
+	angleStableDuration := 15 * time.Second    // Длительность стабильного периода
+	angleShiftAmount := 8.0 + rand.Float64()*2.0 // Величина сдвига (8-10 градусов)
+	
+	// ========== ПАРАМЕТРЫ ГЕНЕРАЦИИ ДЛИНЫ ==========
+	startTime := time.Now()
+	frequency := 0.05                           // Очень низкая частота (период 20 секунд)
+	lengthMin := 35.0                           // Минимальная длина
+	lengthMax := 50.0                           // Максимальная длина
+	lengthAmplitude := (lengthMax - lengthMin) / 2 // Амплитуда синусоиды (7.5)
+	lengthOffset := (lengthMax + lengthMin) / 2    // Смещение (42.5)
 
 	count := 0
 
-	fmt.Printf(">>> Начальный базовый угол: %.2f°\n\n", baseAngle)
+	fmt.Printf(">>> Начальный базовый угол: %.2f°\n", baseAngle)
+	fmt.Printf(">>> Диапазон длины: [%.1f, %.1f]\n", lengthMin, lengthMax)
+	fmt.Printf(">>> Величина сдвига угла: %.1f°\n\n", angleShiftAmount)
 
 	for range ticker.C {
 		// ========== ГЕНЕРАЦИЯ УГЛА ==========
 		
-		// Проверка необходимости смены базового угла (каждые 5 секунд)
-		if time.Since(lastAngleSwitch) >= angleSwitchInterval {
-			baseAngle = rand.Float64() * 360.0
-			lastAngleSwitch = time.Now()
-			fmt.Printf("\n>>> Смена базового угла: %.2f°\n\n", baseAngle)
+		// Проверка необходимости сдвига базового угла (каждые 15 секунд)
+		if time.Since(lastAngleShift) >= angleStableDuration {
+			// Случайное направление сдвига (влево или вправо)
+			direction := 1.0
+			if rand.Float64() < 0.5 {
+				direction = -1.0
+			}
+			
+			// Новая величина сдвига для следующего раза
+			angleShiftAmount = 8.0 + rand.Float64()*2.0
+			
+			// Применяем сдвиг
+			baseAngle += direction * angleShiftAmount
+			lastAngleShift = time.Now()
+			
+			// Нормализация угла
+			for baseAngle < 0 {
+				baseAngle += 360.0
+			}
+			for baseAngle >= 360.0 {
+				baseAngle -= 360.0
+			}
+			
+			fmt.Printf("\n>>> Сдвиг угла на %+.1f° (новый базовый угол: %.2f°)\n\n",
+				direction*angleShiftAmount, baseAngle)
 		}
 
-		// Добавляем небольшие колебания к базовому углу (±10°)
-		angleNoise := (rand.Float64() - 0.5) * 20.0 // Диапазон: -10° до +10°
+		// Добавляем очень маленькие колебания к базовому углу (±1°)
+		angleNoise := (rand.Float64() - 0.5) * 2.0 // Диапазон: -1° до +1°
 		angle := baseAngle + angleNoise
 
 		// Нормализация угла в диапазон 0-360°
@@ -81,25 +108,23 @@ func main() {
 
 		// ========== ГЕНЕРАЦИЯ ДЛИНЫ ==========
 		
-		// Вычисляем время с начала работы скрипта
+		// Время с начала работы
 		elapsedTime := time.Since(startTime).Seconds()
 
-		// Синусоидальное значение
+		// Медленная синусоида в диапазоне [35, 50]
 		sinValue := math.Sin(2 * math.Pi * frequency * elapsedTime)
+		baseLength := lengthOffset + lengthAmplitude*sinValue
 
-		// Базовая длина от -50 до 50
-		baseLength := 50.0 * sinValue
-
-		// Добавляем случайный шум ±10% (±5 единиц)
-		noiseAmplitude := 5.0
+		// Добавляем очень маленький шум (±0.5 единиц)
+		noiseAmplitude := 0.5
 		noise := (rand.Float64() - 0.5) * 2.0 * noiseAmplitude
 		lenght := baseLength + noise
 
-		// Ограничиваем диапазон [-50, 50]
-		if lenght > 50.0 {
-			lenght = 50.0
-		} else if lenght < -50.0 {
-			lenght = -50.0
+		// Мягкое ограничение диапазона
+		if lenght > lengthMax {
+			lenght = lengthMax
+		} else if lenght < lengthMin {
+			lenght = lengthMin
 		}
 
 		// Округление до 3 знаков после запятой
@@ -120,12 +145,14 @@ func main() {
 			count++
 			// Выводим каждую 50-ю запись для мониторинга
 			if count%50 == 0 {
-				fmt.Printf("[%d] time=%v, angle=%.3f°, lenght=%.3f (base_angle=%.2f°)\n",
+				timeSinceShift := time.Since(lastAngleShift).Seconds()
+				fmt.Printf("[%d] time=%v, angle=%.3f° (стабилен %.1f/15с), length=%.3f (sin=%.3f)\n",
 					count,
 					measurement.Time.Format("15:04:05.000"),
 					measurement.Angle,
+					timeSinceShift,
 					measurement.Lenght,
-					baseAngle)
+					sinValue)
 			}
 		}
 	}

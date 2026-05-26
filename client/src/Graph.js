@@ -149,6 +149,9 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
   // Flag to track if we're interacting with the chart
   const isChartInteractionRef = useRef(false);
   
+  const isUpdatingRef = useRef(false);
+  const prevLinesDataRef = useRef(null);
+
   // Функция для загрузки данных из БД
   const fetchDataFromDB = useCallback(async () => {
   if (!dataSourceInfo || !dataSourceInfo.table || !dataSourceInfo.xAxis || !dataSourceInfo.yAxis) {
@@ -280,10 +283,16 @@ const ChartNode = ({ data, isConnectable, selected, id }) => {
 
 // Функция для загрузки данных всех линий из БД (автообновление)
 const fetchLinesDataFromDB = useCallback(async () => {
-  if (!data.lines || data.lines.length === 0) {
-    console.log('Нет линий для обновления');
+  // Предотвращаем повторный вход
+  if (isUpdatingRef.current) {
     return;
   }
+
+  if (!data.lines || data.lines.length === 0) {
+    return;
+  }
+
+  isUpdatingRef.current = true;
 
   try {
     setIsUpdating(true);
@@ -390,53 +399,42 @@ const fetchLinesDataFromDB = useCallback(async () => {
     });
   }
     
-    // Проверяем и обновляем setNodes
-    setNodes((nds) => {
-      const currentNode = nds.find(node => node.id === id && node.type === 'chartNode');
-      if (!currentNode) return nds;
-      
-      // Сравниваем новые данные с текущими
-      const currentLinesData = JSON.stringify(currentNode.data.lines?.map(l => ({
-        id: l.id,
-        dataLength: l.data?.length,
-        lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
-      })));
-      
-      const newLinesData = JSON.stringify(updatedLines.map(l => ({
-        id: l.id,
-        dataLength: l.data?.length,
-        lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
-      })));
-      
-      // Если данные не изменились, не обновляем узел
-      if (currentLinesData === newLinesData) {
-        return nds;
-      }
-      
 
-      return nds.map((node) => {
-        if (node.id === id && node.type === 'chartNode') {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              lines: updatedLines,
-              updateTimestamp: Date.now()
-            }
-          };
-        }
-        return node;
-      });
-    });
-    
-    setIsUpdating(false);
+        // Проверяем, изменились ли данные, перед обновлением узла
+    const newLinesSnapshot = JSON.stringify(updatedLines.map(l => ({
+      id: l.id,
+      dataLength: l.data?.length,
+      lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
+    })));
+
+    // Пропускаем обновление если данные не изменились
+    if (prevLinesDataRef.current !== newLinesSnapshot) {
+      prevLinesDataRef.current = newLinesSnapshot;
+
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === id && node.type === 'chartNode') {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                lines: updatedLines,
+                updateTimestamp: Date.now()
+              }
+            };
+          }
+          return node;
+        })
+      );
+    }
     
   } catch (err) {
     console.error('Ошибка автообновления линий:', err);
+  } finally {
     setIsUpdating(false);
+    isUpdatingRef.current = false;
   }
 }, [id, setNodes, data.lines]);
-
 
     
 useEffect(() => {
@@ -490,35 +488,27 @@ useEffect(() => {
     
     if (hasLines) {
       fetchFunction = fetchLinesDataFromDB;
-
     } else if (hasDataSource) {
       fetchFunction = fetchDataFromDB;
-
     }
     
     if (!fetchFunction) {
-      console.log('Автообновление: нет данных для обновления');
       return;
     }
     
-    //Немедленный первый запрос
+    // Немедленный первый запрос
     fetchFunction();
     
-    //Запускаем интервал с небольшой задержкой
-    const timeoutId = setTimeout(() => {
-      const interval = setInterval(() => {
-        fetchFunction();
-      }, updateConfig.interval);
-      
-      setPollingIntervalId(interval);
-    }, 50); // Небольшая задержка перед запуском интервала
+    // Запускаем интервал
+    const interval = setInterval(() => {
+      fetchFunction();
+    }, updateConfig.interval);
+    
+    setPollingIntervalId(interval);
     
     return () => {
-      clearTimeout(timeoutId);
-      if (pollingIntervalId) {
-        clearInterval(pollingIntervalId);
-        setPollingIntervalId(null);
-      }
+      clearInterval(interval);
+      setPollingIntervalId(null);
     };
   } else {
     if (pollingIntervalId) {
@@ -526,7 +516,7 @@ useEffect(() => {
       setPollingIntervalId(null);
     }
   }
-}, [updateConfig.isAutoUpdate, updateConfig.interval, data.lines, dataSourceInfo, fetchDataFromDB, fetchLinesDataFromDB]);
+}, [updateConfig.isAutoUpdate, updateConfig.interval]);
 
 
   // Тоггл автоматического обновления
@@ -728,56 +718,49 @@ document.addEventListener('mouseup', handleMouseUp);
         <div
           className="resize-handle-square top-left"
           onMouseDown={(e) => startResize(e, 'top-left')}
-          title="Изменить размер"
         />
         
         {/* Верхний правый угол */}
         <div
           className="resize-handle-square top-right"
           onMouseDown={(e) => startResize(e, 'top-right')}
-          title="Изменить размер"
         />
         
         {/* Нижний левый угол */}
         <div
           className="resize-handle-square bottom-left"
           onMouseDown={(e) => startResize(e, 'bottom-left')}
-          title="Изменить размер"
         />
         
         {/* Нижний правый угол */}
         <div
           className="resize-handle-square bottom-right"
           onMouseDown={(e) => startResize(e, 'bottom-right')}
-          title="Изменить размер"
         />
         
         {/* Верхняя сторона */}
         <div
           className="resize-handle-square top"
           onMouseDown={(e) => startResize(e, 'top')}
-          title="Изменить высоту"
         />
         
         {/* Правая сторона */}
         <div
           className="resize-handle-square right"
           onMouseDown={(e) => startResize(e, 'right')}
-          title="Изменить ширину"
         />
         
         {/* Нижняя сторона */}
         <div
           className="resize-handle-square bottom"
           onMouseDown={(e) => startResize(e, 'bottom')}
-          title="Изменить высоту"
+
         />
         
         {/* Левая сторона */}
         <div
           className="resize-handle-square left"
           onMouseDown={(e) => startResize(e, 'left')}
-          title="Изменить ширину"
         />
       </>
     );
@@ -896,6 +879,7 @@ document.addEventListener('mouseup', handleMouseUp);
               width={nodeSize.width}
               height={nodeSize.height - 50}
               yScaleMode={yScaleMode}
+              isAutoUpdate={updateConfig.isAutoUpdate}
             />
           </div>
         )}
@@ -1090,103 +1074,130 @@ const ProcessorNode = ({ data, selected, id }) => {
 // Кастомный узел для радиального графика векторов
 const RadialChartNode = ({ data, isConnectable, selected, id }) => {
   const { getNode, setNodes } = useReactFlow();
-  const [vectorData, setVectorData] = useState([]);
-  const [currentVector, setCurrentVector] = useState(null);
-  const [nodeSize, setNodeSize] = useState({ width: 800, height: 800 });
+  const [nodeSize, setNodeSize] = useState({ width: data.width || 800, height: data.height || 800 });
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
-    interval: 20,
+    interval: 1000,
     isAutoUpdate: false,
     lastUpdateTime: null
   });
-  const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [pollingIntervalId, setPollingIntervalId] = useState(null);
+  const [currentLines, setCurrentLines] = useState([]);
   const nodeRef = useRef(null);
+  const isUpdatingRef = useRef(false);
 
-  // Загрузка данных из БД
-  const fetchVectorDataFromDB = useCallback(async () => {
-    if (!dataSourceInfo || !dataSourceInfo.table || !dataSourceInfo.xColumn || !dataSourceInfo.yColumn) {
-      console.log('Нет информации об источнике данных для векторов');
-      return;
+  // Функция для получения курсора в зависимости от направления
+  const getCursor = (direction) => {
+    switch (direction) {
+      case 'top-left':
+      case 'bottom-right': return 'nwse-resize';
+      case 'top-right':
+      case 'bottom-left': return 'nesw-resize';
+      case 'top':
+      case 'bottom':      return 'ns-resize';
+      case 'left':
+      case 'right':       return 'ew-resize';
+      default:            return 'default';
     }
+  };
 
-    try {
-      const sql = `SELECT * FROM ${dataSourceInfo.table} 
-                   ORDER BY ${dataSourceInfo.timeColumn} DESC 
-                   LIMIT 200`;
-      
-      const response = await fetch('http://localhost:8080/api/execute-query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql })
-      });
-
-      if (!response.ok) throw new Error('Ошибка загрузки векторных данных');
-      
-      const result = await response.json();
-      const newData = result.data || result;
-      
-      if (newData && newData.length > 0) {
-        const formattedData = newData.map(row => ({
-          x: parseFloat(row[dataSourceInfo.xColumn]),
-          y: parseFloat(row[dataSourceInfo.yColumn]),
-          timestamp: row[dataSourceInfo.timeColumn] || Date.now()
-        }));
-        
-        formattedData.sort((a, b) => 
-          new Date(a.timestamp) - new Date(b.timestamp)
-        );
-        
-        setVectorData(formattedData);
-        if (formattedData.length > 0) {
-          setCurrentVector(formattedData[formattedData.length - 1]);
-        }
-      }
-      
-    } catch (error) {
-      console.error('Ошибка загрузки векторных данных из БД:', error);
-    }
-  }, [dataSourceInfo]);
-
-  // Автообновление
+  // Обновление размера из data
   useEffect(() => {
-    if (updateConfig.isAutoUpdate && dataSourceInfo) {
-      fetchVectorDataFromDB();
-      
-      const interval = setInterval(() => {
-        fetchVectorDataFromDB();
-      }, updateConfig.interval);
-      
-      setPollingIntervalId(interval);
-      
-      return () => {
-        if (interval) {
-          clearInterval(interval);
-        }
-      };
-    } else if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
-    }
-  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo, fetchVectorDataFromDB]);
-
-  // Обновление из props
-  useEffect(() => {
-    if (data.initialVectorData && Array.isArray(data.initialVectorData)) {
-      setVectorData(data.initialVectorData);
-      if (data.initialVectorData.length > 0) {
-        setCurrentVector(data.initialVectorData[data.initialVectorData.length - 1]);
-      }
-    }
-    if (data.dataSourceInfo) {
-      setDataSourceInfo(data.dataSourceInfo);
-    }
     if (data.width && data.height) {
       setNodeSize({ width: data.width, height: data.height });
     }
-  }, [data.initialVectorData, data.dataSourceInfo, data.width, data.height, data.updateTimestamp]);
+  }, [data.width, data.height]);
 
-  // Toggle автообновления
+  // Обновление линий из data (приходит от Sidebar)
+  useEffect(() => {
+    if (data.lines && Array.isArray(data.lines)) {
+      setCurrentLines(data.lines);
+    }
+  }, [data.lines, data.updateTimestamp]);
+
+  // Функция для загрузки данных всех линий из БД (автообновление)
+  const fetchLinesDataFromDB = useCallback(async () => {
+    if (isUpdatingRef.current || !currentLines || currentLines.length === 0) return;
+
+    isUpdatingRef.current = true;
+    try {
+      const loadPromises = currentLines.map(async (line) => {
+        if (!line.table || !line.angleAxis || !line.magnitudeAxis) return { ...line, data: [] };
+        
+        const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 1`;
+        
+        const response = await fetch('http://localhost:8080/api/execute-query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql })
+        });
+
+        if (!response.ok) throw new Error(`Ошибка загрузки для ${line.name}`);
+        
+        const result = await response.json();
+        const dbData = result.data || result;
+        
+        if (dbData.length > 0) {
+          const row = dbData[0];
+          const angleValue = parseFloat(row[line.angleAxis]);
+          const magnitudeValue = parseFloat(row[line.magnitudeAxis]);
+          
+          return {
+            ...line,
+            data: [{
+              angle: isNaN(angleValue) ? 0 : angleValue,
+              value: isNaN(magnitudeValue) ? 0 : magnitudeValue,
+              timestamp: Date.now()
+            }]
+          };
+        }
+        
+        return { ...line, data: [] };
+      });
+      
+      const updatedLines = await Promise.all(loadPromises);
+      setCurrentLines(updatedLines);
+
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === id && node.type === 'radialChartNode') {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                lines: updatedLines,
+                updateTimestamp: Date.now()
+              }
+            };
+          }
+          return node;
+        })
+      );
+    } catch (err) {
+      console.error('Ошибка автообновления радиального графика:', err);
+    } finally {
+      isUpdatingRef.current = false;
+    }
+  }, [id, setNodes, currentLines]);
+
+  // Запуск/остановка опроса БД
+  useEffect(() => {
+    if (updateConfig.isAutoUpdate) {
+      const hasLines = currentLines && currentLines.length > 0;
+      if (hasLines) {
+        fetchLinesDataFromDB();
+        const interval = setInterval(fetchLinesDataFromDB, updateConfig.interval);
+        setPollingIntervalId(interval);
+        return () => clearInterval(interval);
+      }
+    } else {
+      if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+        setPollingIntervalId(null);
+      }
+    }
+  }, [updateConfig.isAutoUpdate, updateConfig.interval, fetchLinesDataFromDB]);
+
   const toggleAutoUpdate = useCallback(() => {
     setUpdateConfig(prev => ({
       ...prev,
@@ -1194,7 +1205,7 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
     }));
   }, []);
 
-  // Кастомный ресайзер
+  // Кастомный ресайзер с квадратными ручками
   const CustomResizer = () => {
     if (!selected) return null;
 
@@ -1205,6 +1216,7 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
       const currentNode = getNode(id);
       const startPosX = currentNode.position.x;
       const startPosY = currentNode.position.y;
+
       const startX = e.clientX;
       const startY = e.clientY;
       const startWidth = nodeSize.width;
@@ -1224,28 +1236,35 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
         let newPosX = startPosX;
         let newPosY = startPosY;
         
+        // Минимальные размеры для радиального графика (квадрат 600x600)
+        const minSize = 600;
+        
         switch (direction) {
           case 'right':
-            newWidth = Math.max(600, startWidth + deltaX);
+            newWidth = Math.max(minSize, startWidth + deltaX);
             break;
+            
           case 'left':
-            newWidth = Math.max(600, startWidth - deltaX);
+            newWidth = Math.max(minSize, startWidth - deltaX);
             if (newWidth !== startWidth) {
               newPosX = startPosX + (startWidth - newWidth);
             }
             break;
+            
           case 'bottom':
-            newHeight = Math.max(600, startHeight + deltaY);
+            newHeight = Math.max(minSize, startHeight + deltaY);
             break;
+            
           case 'top':
-            newHeight = Math.max(600, startHeight - deltaY);
+            newHeight = Math.max(minSize, startHeight - deltaY);
             if (newHeight !== startHeight) {
               newPosY = startPosY + (startHeight - newHeight);
             }
             break;
+            
           case 'top-left':
-            newWidth = Math.max(600, startWidth - deltaX);
-            newHeight = Math.max(600, startHeight - deltaY);
+            newWidth = Math.max(minSize, startWidth - deltaX);
+            newHeight = Math.max(minSize, startHeight - deltaY);
             if (newWidth !== startWidth) {
               newPosX = startPosX + (startWidth - newWidth);
             }
@@ -1253,87 +1272,123 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
               newPosY = startPosY + (startHeight - newHeight);
             }
             break;
+            
           case 'top-right':
-            newWidth = Math.max(600, startWidth + deltaX);
-            newHeight = Math.max(600, startHeight - deltaY);
+            newWidth = Math.max(minSize, startWidth + deltaX);
+            newHeight = Math.max(minSize, startHeight - deltaY);
             if (newHeight !== startHeight) {
               newPosY = startPosY + (startHeight - newHeight);
             }
             break;
+            
           case 'bottom-left':
-            newWidth = Math.max(600, startWidth - deltaX);
-            newHeight = Math.max(600, startHeight + deltaY);
+            newWidth = Math.max(minSize, startWidth - deltaX);
+            newHeight = Math.max(minSize, startHeight + deltaY);
             if (newWidth !== startWidth) {
               newPosX = startPosX + (startWidth - newWidth);
             }
             break;
+            
           case 'bottom-right':
-            newWidth = Math.max(600, startWidth + deltaX);
-            newHeight = Math.max(600, startHeight + deltaY);
+            newWidth = Math.max(minSize, startWidth + deltaX);
+            newHeight = Math.max(minSize, startHeight + deltaY);
             break;
         }
         
-        newWidth = Math.min(999999, newWidth);
-        newHeight = Math.min(99999, newHeight);
+        // Ограничиваем максимальные размеры
+        newWidth = Math.min(2000, newWidth);
+        newHeight = Math.min(2000, newHeight);
         
-        // Отменяем предыдущий запланированный кадр, если он есть
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId);
-  }
-  
-  // Планируем обновление на следующий кадр анимации
-  animationFrameId = requestAnimationFrame(() => {
-    setNodeSize({ width: newWidth, height: newHeight });
-    
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            position: {
-              x: newPosX,
-              y: newPosY
-            },
-            data: {
-              ...node.data,
-              width: newWidth,
-              height: newHeight
-            }
-          };
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
         }
-        return node;
-      })
-    );
-  });
-};
+        
+        animationFrameId = requestAnimationFrame(() => {
+          setNodeSize({ width: newWidth, height: newHeight });
+          
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === id) {
+                return {
+                  ...node,
+                  position: {
+                    x: newPosX,
+                    y: newPosY
+                  },
+                  data: {
+                    ...node.data,
+                    width: newWidth,
+                    height: newHeight
+                  }
+                };
+              }
+              return node;
+            })
+          );
+        });
+      };
 
-const handleMouseUp = () => {
-  // Отменяем последний запланированный кадр
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId);
-  }
-  
-  setIsResizing(false);
-  document.body.style.cursor = '';
-  
-  document.removeEventListener('mousemove', handleMouseMove);
-  document.removeEventListener('mouseup', handleMouseUp);
-};
+      const handleMouseUp = () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        
+        setIsResizing(false);
+        document.body.style.cursor = '';
+        
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
 
-document.addEventListener('mousemove', handleMouseMove);
-document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
     };
 
     return (
       <>
-        <div className="resize-handle-square top-left" onMouseDown={(e) => startResize(e, 'top-left')} />
-        <div className="resize-handle-square top-right" onMouseDown={(e) => startResize(e, 'top-right')} />
-        <div className="resize-handle-square bottom-left" onMouseDown={(e) => startResize(e, 'bottom-left')} />
-        <div className="resize-handle-square bottom-right" onMouseDown={(e) => startResize(e, 'bottom-right')} />
-        <div className="resize-handle-square top" onMouseDown={(e) => startResize(e, 'top')} />
-        <div className="resize-handle-square right" onMouseDown={(e) => startResize(e, 'right')} />
-        <div className="resize-handle-square bottom" onMouseDown={(e) => startResize(e, 'bottom')} />
-        <div className="resize-handle-square left" onMouseDown={(e) => startResize(e, 'left')} />
+        {/* Угловые ручки */}
+        <div
+          className="resize-handle-square top-left"
+          onMouseDown={(e) => startResize(e, 'top-left')}
+          title="Изменить размер"
+        />
+        <div
+          className="resize-handle-square top-right"
+          onMouseDown={(e) => startResize(e, 'top-right')}
+          title="Изменить размер"
+        />
+        <div
+          className="resize-handle-square bottom-left"
+          onMouseDown={(e) => startResize(e, 'bottom-left')}
+          title="Изменить размер"
+        />
+        <div
+          className="resize-handle-square bottom-right"
+          onMouseDown={(e) => startResize(e, 'bottom-right')}
+          title="Изменить размер"
+        />
+        
+        {/* Сторонние ручки */}
+        <div
+          className="resize-handle-square top"
+          onMouseDown={(e) => startResize(e, 'top')}
+          title="Изменить высоту"
+        />
+        <div
+          className="resize-handle-square right"
+          onMouseDown={(e) => startResize(e, 'right')}
+          title="Изменить ширину"
+        />
+        <div
+          className="resize-handle-square bottom"
+          onMouseDown={(e) => startResize(e, 'bottom')}
+          title="Изменить высоту"
+        />
+        <div
+          className="resize-handle-square left"
+          onMouseDown={(e) => startResize(e, 'left')}
+          title="Изменить ширину"
+        />
       </>
     );
   };
@@ -1367,12 +1422,12 @@ document.addEventListener('mouseup', handleMouseUp);
               setNodes((nds) =>
                 nds.map((node) => {
                   if (node.id === id) {
-                    return {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        label: newTitle
-                      }
+                    return { 
+                      ...node, 
+                      data: { 
+                        ...node.data, 
+                        label: newTitle 
+                      } 
                     };
                   }
                   return node;
@@ -1381,28 +1436,17 @@ document.addEventListener('mouseup', handleMouseUp);
             }}
             isSelected={selected}
           />
-          {dataSourceInfo && (
-            <span className="data-source-badge ms-2">
-              {dataSourceInfo.table}: {dataSourceInfo.xColumn}, {dataSourceInfo.yColumn}
-            </span>
-          )}
+          <span className="resize-indicator">
+            Размер: {Math.round(nodeSize.width)}×{Math.round(nodeSize.height)}
+          </span>
         </div>
         
-        {currentVector && (
-          <div className="vector-stats">
-            <span>X: {currentVector.x.toFixed(2)}</span>
-            <span>Y: {currentVector.y.toFixed(2)}</span>
-            <span>|V|: {Math.sqrt(currentVector.x**2 + currentVector.y**2).toFixed(2)}</span>
-            <span>∠: {(Math.atan2(currentVector.y, currentVector.x) * 180 / Math.PI).toFixed(1)}°</span>
-          </div>
-        )}
-        
-        <div className="chart-controls">
+        <div className="chart-update-controls">
           <button
-            className={`btn btn-sm ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
+            className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}
-            disabled={!dataSourceInfo}
-            title={updateConfig.isAutoUpdate ? "Остановить" : "Запустить"}
+            disabled={!currentLines || currentLines.length === 0}
+            title={updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД"}
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
@@ -1411,10 +1455,11 @@ document.addEventListener('mouseup', handleMouseUp);
       
       <div className="chart-node-content nodrag">
         <RadialChart
-          vectorData={vectorData}
+          lines={currentLines}
           width={nodeSize.width}
-          height={nodeSize.height - 100}
-          maxHistorySize={200}
+          height={nodeSize.height - 50}
+          maxHistorySize={1}
+          isAutoUpdate={updateConfig.isAutoUpdate}
         />
       </div>
     </div>
@@ -1445,26 +1490,12 @@ const Graph = () => {
     window.updateNodeData = (nodeId, payload) => {
   setNodes((nds) => 
     nds.map((node) => {
-      if (node.id === nodeId && node.type === 'chartNode') {
+      if (node.id === nodeId && (node.type === 'chartNode' || node.type === 'radialChartNode')) {
         return {
           ...node,
           data: {
             ...node.data,
-            initialData: payload.chartData || payload,  // Поддержка старого формата
-            dataSourceInfo: payload.sourceInfo,
-            additionalSeries: payload.additionalSeries || [], // дополнительные серии
-            lines: payload.lines || [],
-            updateTimestamp: payload.timestamp || Date.now()  // Для принудительного обновления
-          }
-        };
-      }
-      if (node.id === nodeId && node.type === 'radialChartNode') {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            initialVectorData: payload.vectorData || [],
-            dataSourceInfo: payload.sourceInfo,
+            lines: payload.lines || [], // Общие линии для всех
             updateTimestamp: payload.timestamp || Date.now()
           }
         };
@@ -1473,6 +1504,37 @@ const Graph = () => {
     })
   );
 };
+//     window.updateNodeData = (nodeId, payload) => {
+//   setNodes((nds) => 
+//     nds.map((node) => {
+//       if (node.id === nodeId && node.type === 'chartNode') {
+//         return {
+//           ...node,
+//           data: {
+//             ...node.data,
+//             initialData: payload.chartData || payload,  // Поддержка старого формата
+//             dataSourceInfo: payload.sourceInfo,
+//             additionalSeries: payload.additionalSeries || [], // дополнительные серии
+//             lines: payload.lines || [],
+//             updateTimestamp: payload.timestamp || Date.now()  // Для принудительного обновления
+//           }
+//         };
+//       }
+//       if (node.id === nodeId && node.type === 'radialChartNode') {
+//         return {
+//           ...node,
+//           data: {
+//             ...node.data,
+//             initialVectorData: payload.vectorData || [],
+//             dataSourceInfo: payload.sourceInfo,
+//             updateTimestamp: payload.timestamp || Date.now()
+//           }
+//         };
+//       }
+//       return node;
+//     })
+//   );
+// };
     
     return () => {
       delete window.updateNodeData;

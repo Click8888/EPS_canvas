@@ -327,7 +327,7 @@ const defaultOption = {
     right: '4%',
     bottom: '5%',
     top: '10%',
-    containLabel: true
+    containLabel: true,
   }
 };
 
@@ -337,6 +337,7 @@ const Chart = ({
   lines = [],
   width = '100%', 
   height = '600px',
+  isAutoUpdate = false,
 }) => {
   const chartRef = useRef(null);
   const [option, setOption] = useState(defaultOption);
@@ -713,6 +714,12 @@ useEffect(() => {
   
   const updateOption = {
     animation: false,
+    ...(!isAutoUpdate && { // ДОБАВИТЬ условие
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    }
+  }),
     yAxis: {
       min: yRange.min,
       max: yRange.max
@@ -747,7 +754,7 @@ useEffect(() => {
     const newOption = {
       ...defaultOption,
       animation: false,
-      tooltip: {
+      tooltip: !isAutoUpdate ? {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
         formatter: function(params) {
@@ -769,7 +776,7 @@ useEffect(() => {
           
           return tooltipContent;
         }
-      },
+      } : { show: false },
       // Добавляем настройки для axisPointer на осях
       axisPointer: {
         link: { xAxisIndex: 'all' },
