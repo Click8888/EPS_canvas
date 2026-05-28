@@ -29,7 +29,7 @@ func main() {
     // Настройка роутера
     r := gin.Default()
 
-    // Настройка CORS - исправленная версия
+    // Настройка CORS
     r.Use(cors.New(cors.Config{
         AllowOrigins:     []string{"*"},
         AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
@@ -51,8 +51,10 @@ func main() {
         api.GET("/getparams", routes.GetDatabases)
         api.GET("/metadata", routes.GetDatabaseMetadata)    
         api.POST("/execute-query", routes.HandleSQLQuery)
-        
 
+        // batch-запрос на данные
+        api.POST("/batch-query", routes.HandleBatchQuery)
+        
         //Эндпоинты админки
         api.POST("/deltable", routes.DeleteTable)
         api.POST("/addrow", routes.AddRow)

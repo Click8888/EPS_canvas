@@ -18,6 +18,7 @@ import Sidebar from './components/Sidebar';
 import Chart from './components/Chart';
 import RadialChart from './components/RadialChart';
 import { useTheme } from './components/ThemeContext';
+import globalDataStream from './components/GlobalDataStream';
 
 // Компонент редактируемого заголовка
 const EditableTitle = ({ value, onSave, isSelected }) => {
@@ -124,420 +125,183 @@ const getCursor = (direction) => {
 const ChartNode = ({ data, isConnectable, selected, id }) => {
   const { getNode, setNodes } = useReactFlow();
   const [chartData, setChartData] = useState([]);
-  const [activeGraphUpdate, setActiveGraphUpdate] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [chartSeries, setChartSeries] = useState([]);
-  const [additionalSeries, setAdditionalSeries] = useState([]); // НОВОЕ: дополнительные линии
+  const [additionalSeries, setAdditionalSeries] = useState([]);
   const [nodeSize, setNodeSize] = useState({ width: 600, height: 1200 });
   const [isResizing, setIsResizing] = useState(false);
-  const [updateConfig, setUpdateConfig] = useState({
-    interval: 20, // Интервал обновления из БД в мс
-    isAutoUpdate: false, // Автоматическое обновление
-    isSettingsOpen: false,
-    lastUpdateTime: null // Время последнего обновления
-  });
-  const [intervalInput, setIntervalInput] = useState("100");
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
-  const [pollingIntervalId, setPollingIntervalId] = useState(null);
-  const [wsConnection, setWsConnection] = useState(null);
   const [yScaleMode, setYScaleMode] = useState('dynamic');
+  const [updateConfig, setUpdateConfig] = useState({
+    interval: 20, // Интервал обновления для графика
+    isAutoUpdate: false, // Автоматическое обновление
+    lastUpdateTime: null
+  });
   const nodeRef = useRef(null);
-  const updateIntervalRef = useRef(null);
-  const settingsPanelRef = useRef(null);
   const chartWrapperRef = useRef(null);
+  const subscriptionIdRef = useRef(null); // ID подписки в глобальном стриме
+  const [localLines, setLocalLines] = useState([]); // Локальное состояние для линий
   
   // Flag to track if we're interacting with the chart
   const isChartInteractionRef = useRef(false);
   
-  const isUpdatingRef = useRef(false);
-  const prevLinesDataRef = useRef(null);
+  const dpr = window.devicePixelRatio || 1;
 
-  // Функция для загрузки данных из БД
-  const fetchDataFromDB = useCallback(async () => {
-  if (!dataSourceInfo || !dataSourceInfo.table || !dataSourceInfo.xAxis || !dataSourceInfo.yAxis) {
-    console.log('Нет информации об источнике данных');
-    return;
-  }
-
-  try {
-    setIsUpdating(true);
-    
-    // Формируем SQL запрос БЕЗ лимита
-    let sql = `SELECT * FROM ${dataSourceInfo.table}`;
-    
-    // Если есть время последнего обновления, фильтруем новые данные
-    if (updateConfig.lastUpdateTime) {
-      const lastTime = updateConfig.lastUpdateTime.toISOString();
-      sql += ` WHERE ${dataSourceInfo.xAxis} > '${lastTime}'`;
+  // Получение курсора для ресайза
+  const getCursor = (direction) => {
+    switch (direction) {
+      case 'top-left':
+      case 'bottom-right': return 'nwse-resize';
+      case 'top-right':
+      case 'bottom-left': return 'nesw-resize';
+      case 'top':
+      case 'bottom':      return 'ns-resize';
+      case 'left':
+      case 'right':       return 'ew-resize';
+      default:            return 'default';
     }
-    
-    sql += ` ORDER BY ${dataSourceInfo.xAxis} DESC LIMIT 200`;
-    //sql += ` LIMIT 1000`
-    console.log('Выполняем SQL:', sql);
-    
-    const response = await fetch('http://localhost:8080/api/execute-query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql })
-    });
+  };
 
-    if (!response.ok) throw new Error('Ошибка загрузки данных из БД');
-    
-    const result = await response.json();
-    const newData = result.data || result;
-    
-    if (newData && newData.length > 0) {
-      //console.log(`Получено ${newData.length} новых записей из БД`);
-      
-      // Форматируем данные для графика
-      const formattedData = newData
-        .filter(row => row[dataSourceInfo.xAxis] != null && row[dataSourceInfo.yAxis] != null)
-        .map((row, index) => {
-          const xValue = row[dataSourceInfo.xAxis];
-          const yValue = parseFloat(row[dataSourceInfo.yAxis]);
-          
-          // Преобразуем время
-          let timeValue;
-          if (xValue instanceof Date) {
-            // Если это объект Date из БД, сохраняем как есть
-            timeValue = xValue.getTime() / 1000;
-          } else if (typeof xValue === 'string') {
-            // Сначала проверяем формат HH:MM:SS.mmm
-            const timeMatch = xValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
-            if (timeMatch) {
-              const hours = parseInt(timeMatch[1]) || 0;
-              const minutes = parseInt(timeMatch[2]) || 0;
-              const seconds = parseInt(timeMatch[3]) || 0;
-              let milliseconds = 0;
-              if (timeMatch[4]) {
-                const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
-                milliseconds = parseInt(msString, 10);
-              }
-              timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-            } else {
-
-              const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
-              if (fullDateMatch) {
-
-                const date = new Date(xValue);
-                if (!isNaN(date.getTime())) {
-                  timeValue = date.getTime() / 1000;
-                } else {
-                  timeValue = parseFloat(xValue) || index;
-                }
-              } else {
-                timeValue = parseFloat(xValue) || index;
-              }
-            }
-          } else if (typeof xValue === 'number') {
-            timeValue = xValue;
-          } else {
-            timeValue = index;
-          }
-          
-          return {
-            time: timeValue,
-            value: isNaN(yValue) ? 0 : yValue,
-            originalTime: xValue,
-            originalValue: row[dataSourceInfo.yAxis],
-            seriesId: 'database',
-            timestamp: Date.now(),
-            overload: row.is_overload || false
-          };
-        });
-      
-      // Сортируем по времени
-      formattedData.sort((a, b) => a.time - b.time);
-      
-      // Обновляем данные графика
-      setChartData(() => {
-        formattedData.sort((a, b) => a.time - b.time);
-        return formattedData;
+  // Синхронизация внешних lines с локальным состоянием
+  useEffect(() => {
+    if (data.lines && Array.isArray(data.lines) && data.lines.length > 0) {
+      setLocalLines(prevLines => {
+        // Сохраняем существующие данные при обновлении метаданных
+        const existingDataMap = new Map(prevLines.map(l => [l.id, l.data]));
+        const newLines = data.lines.map(line => ({
+          ...line,
+          data: existingDataMap.get(line.id) || line.data || []
+        }));
+        return newLines;
       });
-      
-      // Обновляем время последнего обновления
-      if (formattedData.length > 0) {
-        const lastRow = newData[newData.length - 1];
-        const lastTime = lastRow[dataSourceInfo.xAxis];
-        try {
-          const date = new Date(lastTime);
-          if (!isNaN(date.getTime())) {
-            setUpdateConfig(prev => ({
-              ...prev,
-              lastUpdateTime: date
-            }));
-          }
-        } catch (e) {
-          console.error('Ошибка парсинга времени:', e);
-        }
-      }
+    }
+  }, [data.lines]);
+
+  // Обработка начальных данных из props
+  useEffect(() => {
+    if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
+      console.log('Обновление графика новыми данными:', data.initialData.length, 'точек');
+      setChartData(data.initialData);
     }
     
-  } catch (error) {
-    console.error('Ошибка загрузки данных из БД:', error);
-  } finally {
-    setIsUpdating(false);
-  }
-}, [dataSourceInfo, updateConfig.lastUpdateTime]);
-
-
-// Функция для загрузки данных всех линий из БД (автообновление)
-const fetchLinesDataFromDB = useCallback(async () => {
-  // Предотвращаем повторный вход
-  if (isUpdatingRef.current) {
-    return;
-  }
-
-  if (!data.lines || data.lines.length === 0) {
-    return;
-  }
-
-  isUpdatingRef.current = true;
-
-  try {
-    setIsUpdating(true);
-    
-    const loadPromises = data.lines.map(async (line) => {
-      if (!line.table || !line.xAxis || !line.yAxis) {
-        return { ...line, data: [] };
-      }
-      
-      const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
-      
-      try {
-        const response = await fetch('http://localhost:8080/api/execute-query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql })
-        });
-
-        if (!response.ok) throw new Error(`Ошибка загрузки данных для линии ${line.name}`);
-        
-        const result = await response.json();
-        const dbData = result.data || result;
-        
-        const formattedData = dbData
-          .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
-          .map((row) => {
-            const yValue = parseFloat(row[line.yAxis]);
-            const xValue = row[line.xAxis];
-            
-            let timeValue;
-            if (xValue instanceof Date) {
-              timeValue = xValue.getTime() / 1000;
-            } else if (typeof xValue === 'string') {
-              const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
-              if (fullDateMatch) {
-                const date = new Date(xValue);
-                if (!isNaN(date.getTime())) {
-                  timeValue = date.getTime() / 1000;
-                } else {
-                  timeValue = parseFloat(xValue) || 0;
-                }
-              } else {
-                const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
-                if (timeMatch) {
-                  const hours = parseInt(timeMatch[1]) || 0;
-                  const minutes = parseInt(timeMatch[2]) || 0;
-                  const seconds = parseInt(timeMatch[3]) || 0;
-                  let milliseconds = 0;
-                  if (timeMatch[4]) {
-                    const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
-                    milliseconds = parseInt(msString, 10);
-                  }
-                  timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-                } else {
-                  timeValue = parseFloat(xValue) || 0;
-                }
-              }
-            } else {
-              timeValue = parseFloat(xValue) || 0;
-            }
-            
-            return {
-              time: timeValue,
-              value: isNaN(yValue) ? 0 : yValue,
-              originalTime: xValue,
-              originalValue: row[line.yAxis],
-              seriesId: line.id,
-              timestamp: Date.now()
-            };
-          });
-        
-        formattedData.sort((a, b) => a.time - b.time);
-        
-        return { ...line, data: formattedData };
-      } catch (err) {
-        console.error(`Ошибка загрузки данных для линии ${line.name}:`, err);
-        return { ...line, data: [] };
-      }
-    });
-    
-    const updatedLines = await Promise.all(loadPromises);
-    
-    // Собираем все точки из всех линий для обратной совместимости
-  const allDataPoints = [];
-  updatedLines.forEach(line => {
-    if (line.data && Array.isArray(line.data)) {
-      allDataPoints.push(...line.data);
+    if (data.dataSourceInfo) {
+      setDataSourceInfo(data.dataSourceInfo);
     }
-  });
-    
-    // Сортируем все точки по времени
-    allDataPoints.sort((a, b) => a.time - b.time);
-    
-    // Обновляем локальное состояние chartData
-    if (allDataPoints.length > 0) {
-    setChartData(prevData => {
-      const prevStr = JSON.stringify(prevData);
-      const newStr = JSON.stringify(allDataPoints);
-      if (prevStr !== newStr) {
-        console.log('Обновлены данные графика');
-        return allDataPoints;
-      }
-      return prevData;
-    });
-  }
-    
-
-        // Проверяем, изменились ли данные, перед обновлением узла
-    const newLinesSnapshot = JSON.stringify(updatedLines.map(l => ({
-      id: l.id,
-      dataLength: l.data?.length,
-      lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
-    })));
-
-    // Пропускаем обновление если данные не изменились
-    if (prevLinesDataRef.current !== newLinesSnapshot) {
-      prevLinesDataRef.current = newLinesSnapshot;
-
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === id && node.type === 'chartNode') {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                lines: updatedLines,
-                updateTimestamp: Date.now()
-              }
-            };
-          }
-          return node;
-        })
-      );
+    if (data.dataSourceInfo && data.dataSourceInfo.yScaleMode) {
+      setYScaleMode(data.dataSourceInfo.yScaleMode);
     }
     
-  } catch (err) {
-    console.error('Ошибка автообновления линий:', err);
-  } finally {
-    setIsUpdating(false);
-    isUpdatingRef.current = false;
-  }
-}, [id, setNodes, data.lines]);
+    if (data.additionalSeries && Array.isArray(data.additionalSeries)) {
+      setAdditionalSeries(data.additionalSeries);
+    }
 
-    
-useEffect(() => {
-  // Используем данные из props
-  if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {
-    console.log('Обновление графика новыми данными:', data.initialData.length, 'точек');
-    console.log("initialData ", data.initialData.length)
-    setChartData(data.initialData);
-  }
-  
-  if (data.lines && Array.isArray(data.lines) && data.lines.length > 0) {
-    const allPoints = [];
-    data.lines.forEach(line => {
-      if (line.data && Array.isArray(line.data)) {
-        allPoints.push(...line.data);
+    if (data.width && data.height) {
+      setNodeSize({ width: data.width, height: data.height });
+    }
+  }, [data.initialData, data.updateTimestamp, data.width, data.height, data.dataSourceInfo, data.additionalSeries]);
+
+  // ПОДПИСКА НА ГЛОБАЛЬНЫЙ СТРИМ ДАННЫХ
+  useEffect(() => {
+    // Если нет линий или автообновление выключено - отписываемся
+    if (!localLines || localLines.length === 0 || !updateConfig.isAutoUpdate) {
+      if (subscriptionIdRef.current) {
+        globalDataStream.unsubscribe(subscriptionIdRef.current);
+        subscriptionIdRef.current = null;
       }
-    });
-    if (allPoints.length > 0) {
-      allPoints.sort((a, b) => a.time - b.time);
-      setChartData(allPoints);
-    }
-  }
-
-  if (data.dataSourceInfo) {
-    setDataSourceInfo(data.dataSourceInfo);
-  }
-  if (data.dataSourceInfo && data.dataSourceInfo.yScaleMode) {
-    setYScaleMode(data.dataSourceInfo.yScaleMode);
-  }
-  if (data.series) setChartSeries(data.series);
-  
-  // Обработка дополнительных серий
-  if (data.additionalSeries && Array.isArray(data.additionalSeries)) {
-    setAdditionalSeries(data.additionalSeries);
-  }
-
-  if (data.width && data.height) {
-    setNodeSize({ width: data.width, height: data.height });
-  }
-  
-  setIntervalInput(updateConfig.interval.toString());
-}, [data.initialData, data.updateTimestamp, data.series, data.width, data.height, data.dataSourceInfo, data.additionalSeries, data.lines, id]);
-
-  // Запуск/остановка опроса БД
-useEffect(() => {
-  if (updateConfig.isAutoUpdate) {
-    const hasLines = data.lines && data.lines.length > 0;
-    const hasDataSource = dataSourceInfo && dataSourceInfo.table;
-    
-    let fetchFunction = null;
-    
-    if (hasLines) {
-      fetchFunction = fetchLinesDataFromDB;
-    } else if (hasDataSource) {
-      fetchFunction = fetchDataFromDB;
-    }
-    
-    if (!fetchFunction) {
       return;
     }
-    
-    // Немедленный первый запрос
-    fetchFunction();
-    
-    // Запускаем интервал
-    const interval = setInterval(() => {
-      fetchFunction();
-    }, updateConfig.interval);
-    
-    setPollingIntervalId(interval);
-    
-    return () => {
-      clearInterval(interval);
-      setPollingIntervalId(null);
-    };
-  } else {
-    if (pollingIntervalId) {
-      clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
-    }
-  }
-}, [updateConfig.isAutoUpdate, updateConfig.interval]);
 
+    // Проверяем, что у линий есть необходимые параметры
+    const validLines = localLines.filter(line => line.table && line.xAxis && line.yAxis);
+    if (validLines.length === 0) return;
+
+    console.log(`[ChartNode ${id}] Подписка на глобальный стрим для ${validLines.length} линий, интервал: ${updateConfig.interval}ms`);
+
+    // Подписываемся на глобальный стрим
+    const subId = globalDataStream.subscribe(
+      id, // Используем ID узла как идентификатор
+      validLines,
+      updateConfig.interval,
+      (updatedLines, timestamp) => {
+        console.log(`[ChartNode ${id}] Получены обновленные данные от глобального стрима, ${updatedLines.length} линий`);
+        
+        // Собираем все точки для графика
+        const allPoints = [];
+        updatedLines.forEach(line => {
+          if (line.data && Array.isArray(line.data)) {
+            allPoints.push(...line.data);
+          }
+        });
+        allPoints.sort((a, b) => a.time - b.time);
+        setChartData(allPoints);
+        
+        // Обновляем локальное состояние линий
+        setLocalLines(prevLines => {
+          const updatedLinesMap = new Map(updatedLines.map(l => [l.id, l]));
+          const mergedLines = prevLines.map(line => {
+            if (updatedLinesMap.has(line.id)) {
+              return { ...line, data: updatedLinesMap.get(line.id).data };
+            }
+            return line;
+          });
+          return mergedLines;
+        });
+        
+        // Обновляем узел в React Flow
+        setNodes((nds) =>
+          nds.map((node) => {
+            if (node.id === id && node.type === 'chartNode') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  lines: updatedLines,
+                  updateTimestamp: timestamp
+                }
+              };
+            }
+            return node;
+          })
+        );
+      }
+    );
+    
+    subscriptionIdRef.current = subId;
+    
+    // Отписка при размонтировании или изменении зависимостей
+    return () => {
+      if (subscriptionIdRef.current) {
+        console.log(`[ChartNode ${id}] Отписка от глобального стрима`);
+        globalDataStream.unsubscribe(subscriptionIdRef.current);
+        subscriptionIdRef.current = null;
+      }
+    };
+  }, [id, localLines, updateConfig.isAutoUpdate, updateConfig.interval, setNodes]);
 
   // Тоггл автоматического обновления
   const toggleAutoUpdate = useCallback(() => {
-    setActiveGraphUpdate(true)
     const newState = !updateConfig.isAutoUpdate;
     setUpdateConfig(prev => ({
       ...prev,
       isAutoUpdate: newState
     }));
     
-    if (newState && dataSourceInfo) {
-      console.log('Автообновление включено, интервал:', updateConfig.interval, 'мс');
-    } else {
-      console.log('Автообновление выключено');
+    console.log(`[ChartNode ${id}] Автообновление ${newState ? 'включено' : 'выключено'}, интервал: ${updateConfig.interval}мс`);
+  }, [updateConfig.isAutoUpdate, updateConfig.interval, id]);
+
+  // Изменение интервала обновления
+  const changeUpdateInterval = useCallback((newInterval) => {
+    setUpdateConfig(prev => ({
+      ...prev,
+      interval: newInterval
+    }));
+    
+    // Если есть активная подписка, обновляем интервал в глобальном стриме
+    if (subscriptionIdRef.current && updateConfig.isAutoUpdate) {
+      globalDataStream.updateSubscriptionInterval(subscriptionIdRef.current, newInterval);
     }
-  }, [updateConfig.isAutoUpdate, updateConfig.interval, dataSourceInfo]);
+  }, [updateConfig.isAutoUpdate]);
 
   // Prevent mouse events from reaching ReactFlow
   const handleMouseDown = useCallback((e) => {
-    // Stop propagation to prevent ReactFlow from capturing the event
     e.stopPropagation();
   }, []);
 
@@ -550,7 +314,6 @@ useEffect(() => {
   }, []);
 
   const handleWheel = useCallback((e) => {
-    // Allow wheel events for zooming the chart, but prevent propagation
     e.stopPropagation();
   }, []);
 
@@ -561,7 +324,6 @@ useEffect(() => {
 
   // Handle chart interaction end
   const handleChartInteractionEnd = useCallback(() => {
-    // Use setTimeout to allow chart interactions to complete
     setTimeout(() => {
       isChartInteractionRef.current = false;
     }, 100);
@@ -589,189 +351,131 @@ useEffect(() => {
 
       let animationFrameId = null;
       
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-      
-      let newWidth = startWidth;
-      let newHeight = startHeight;
-      let newPosX = startPosX;
-      let newPosY = startPosY;
-      
-      // В зависимости от направления изменяем размеры И позицию
-      switch (direction) {
-        case 'right':
-          newWidth = Math.max(720, startWidth + deltaX);
-          break;
-          
-        case 'left':
-          newWidth = Math.max(720, startWidth - deltaX);
-          // КЛЮЧЕВОЕ: сдвигаем позицию влево при увеличении
-          if (newWidth !== startWidth) {
-            newPosX = startPosX + (startWidth - newWidth);
-          }
-          break;
-          
-        case 'bottom':
-          newHeight = Math.max(400, startHeight + deltaY);
-          break;
-          
-        case 'top':
-          newHeight = Math.max(400, startHeight - deltaY);
-          // КЛЮЧЕВОЕ: сдвигаем позицию вверх при увеличении
-          if (newHeight !== startHeight) {
-            newPosY = startPosY + (startHeight - newHeight);
-          }
-          break;
-          
-        case 'top-left':
-          newWidth = Math.max(720, startWidth - deltaX);
-          newHeight = Math.max(400, startHeight - deltaY);
-          // Сдвигаем обе координаты
-          if (newWidth !== startWidth) {
-            newPosX = startPosX + (startWidth - newWidth);
-          }
-          if (newHeight !== startHeight) {
-            newPosY = startPosY + (startHeight - newHeight);
-          }
-          break;
-          
-        case 'top-right':
-          newWidth = Math.max(720, startWidth + deltaX);
-          newHeight = Math.max(400, startHeight - deltaY);
-          // Сдвигаем только Y
-          if (newHeight !== startHeight) {
-            newPosY = startPosY + (startHeight - newHeight);
-          }
-          break;
-          
-        case 'bottom-left':
-          newWidth = Math.max(720, startWidth - deltaX);
-          newHeight = Math.max(400, startHeight + deltaY);
-          // Сдвигаем только X
-          if (newWidth !== startWidth) {
-            newPosX = startPosX + (startWidth - newWidth);
-          }
-          break;
-          
-        case 'bottom-right':
-          newWidth = Math.max(720, startWidth + deltaX);
-          newHeight = Math.max(400, startHeight + deltaY);
-          break;
-      }
-      
-      // Ограничиваем максимальные размеры
-      newWidth = Math.min(999999, newWidth);
-      newHeight = Math.min(99999, newHeight);
-      
-      // Отменяем предыдущий запланированный кадр, если он есть
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId);
-  }
-  
-  // Планируем обновление на следующий кадр анимации
-  animationFrameId = requestAnimationFrame(() => {
-    setNodeSize({ width: newWidth, height: newHeight });
-    
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === id) {
-          return {
-            ...node,
-            position: {
-              x: newPosX,
-              y: newPosY
-            },
-            data: {
-              ...node.data,
-              width: newWidth,
-              height: newHeight
+      const handleMouseMove = (moveEvent) => {
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
+        
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newPosX = startPosX;
+        let newPosY = startPosY;
+        
+        switch (direction) {
+          case 'right':
+            newWidth = Math.max(720, startWidth + deltaX);
+            break;
+            
+          case 'left':
+            newWidth = Math.max(720, startWidth - deltaX);
+            if (newWidth !== startWidth) {
+              newPosX = startPosX + (startWidth - newWidth);
             }
-          };
+            break;
+            
+          case 'bottom':
+            newHeight = Math.max(400, startHeight + deltaY);
+            break;
+            
+          case 'top':
+            newHeight = Math.max(400, startHeight - deltaY);
+            if (newHeight !== startHeight) {
+              newPosY = startPosY + (startHeight - newHeight);
+            }
+            break;
+            
+          case 'top-left':
+            newWidth = Math.max(720, startWidth - deltaX);
+            newHeight = Math.max(400, startHeight - deltaY);
+            if (newWidth !== startWidth) {
+              newPosX = startPosX + (startWidth - newWidth);
+            }
+            if (newHeight !== startHeight) {
+              newPosY = startPosY + (startHeight - newHeight);
+            }
+            break;
+            
+          case 'top-right':
+            newWidth = Math.max(720, startWidth + deltaX);
+            newHeight = Math.max(400, startHeight - deltaY);
+            if (newHeight !== startHeight) {
+              newPosY = startPosY + (startHeight - newHeight);
+            }
+            break;
+            
+          case 'bottom-left':
+            newWidth = Math.max(720, startWidth - deltaX);
+            newHeight = Math.max(400, startHeight + deltaY);
+            if (newWidth !== startWidth) {
+              newPosX = startPosX + (startWidth - newWidth);
+            }
+            break;
+            
+          case 'bottom-right':
+            newWidth = Math.max(720, startWidth + deltaX);
+            newHeight = Math.max(400, startHeight + deltaY);
+            break;
         }
-        return node;
-      })
-    );
-  });
-};
+        
+        newWidth = Math.min(999999, newWidth);
+        newHeight = Math.min(99999, newHeight);
+        
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        
+        animationFrameId = requestAnimationFrame(() => {
+          setNodeSize({ width: newWidth, height: newHeight });
+          
+          setNodes((nds) =>
+            nds.map((node) => {
+              if (node.id === id) {
+                return {
+                  ...node,
+                  position: {
+                    x: newPosX,
+                    y: newPosY
+                  },
+                  data: {
+                    ...node.data,
+                    width: newWidth,
+                    height: newHeight
+                  }
+                };
+              }
+              return node;
+            })
+          );
+        });
+      };
 
-const handleMouseUp = () => {
-  // Отменяем последний запланированный кадр
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId);
-  }
-  
-  setIsResizing(false);
-  document.body.style.cursor = '';
-  
-  document.removeEventListener('mousemove', handleMouseMove);
-  document.removeEventListener('mouseup', handleMouseUp);
-};
+      const handleMouseUpEvent = () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        
+        setIsResizing(false);
+        document.body.style.cursor = '';
+        
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUpEvent);
+      };
 
-document.addEventListener('mousemove', handleMouseMove);
-document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUpEvent);
     };
 
     return (
       <>
-        {/* Верхний левый угол */}
-        <div
-          className="resize-handle-square top-left"
-          onMouseDown={(e) => startResize(e, 'top-left')}
-        />
-        
-        {/* Верхний правый угол */}
-        <div
-          className="resize-handle-square top-right"
-          onMouseDown={(e) => startResize(e, 'top-right')}
-        />
-        
-        {/* Нижний левый угол */}
-        <div
-          className="resize-handle-square bottom-left"
-          onMouseDown={(e) => startResize(e, 'bottom-left')}
-        />
-        
-        {/* Нижний правый угол */}
-        <div
-          className="resize-handle-square bottom-right"
-          onMouseDown={(e) => startResize(e, 'bottom-right')}
-        />
-        
-        {/* Верхняя сторона */}
-        <div
-          className="resize-handle-square top"
-          onMouseDown={(e) => startResize(e, 'top')}
-        />
-        
-        {/* Правая сторона */}
-        <div
-          className="resize-handle-square right"
-          onMouseDown={(e) => startResize(e, 'right')}
-        />
-        
-        {/* Нижняя сторона */}
-        <div
-          className="resize-handle-square bottom"
-          onMouseDown={(e) => startResize(e, 'bottom')}
-
-        />
-        
-        {/* Левая сторона */}
-        <div
-          className="resize-handle-square left"
-          onMouseDown={(e) => startResize(e, 'left')}
-        />
+        <div className="resize-handle-square top-left" onMouseDown={(e) => startResize(e, 'top-left')} />
+        <div className="resize-handle-square top-right" onMouseDown={(e) => startResize(e, 'top-right')} />
+        <div className="resize-handle-square bottom-left" onMouseDown={(e) => startResize(e, 'bottom-left')} />
+        <div className="resize-handle-square bottom-right" onMouseDown={(e) => startResize(e, 'bottom-right')} />
+        <div className="resize-handle-square top" onMouseDown={(e) => startResize(e, 'top')} />
+        <div className="resize-handle-square right" onMouseDown={(e) => startResize(e, 'right')} />
+        <div className="resize-handle-square bottom" onMouseDown={(e) => startResize(e, 'bottom')} />
+        <div className="resize-handle-square left" onMouseDown={(e) => startResize(e, 'left')} />
       </>
     );
-  };
-
-  // Конфигурация графика
-  const chartColors = {
-    backgroundColor: '#1e1e1e',
-    textColor: '#ffffff',
-    lineColor: data.lineColor || '#4dabf7',
-    gridColor: '#444'
   };
 
   const handleContextMenu = (e) => {
@@ -793,7 +497,6 @@ document.addEventListener('mouseup', handleMouseUp);
       }}
       onContextMenu={handleContextMenu}
     >
-      {/* Квадратные ручки для ресайза */}
       <CustomResizer />
       
       <div className="chart-node-header">
@@ -802,7 +505,6 @@ document.addEventListener('mouseup', handleMouseUp);
           <EditableTitle 
             value={data.label || 'График'}
             onSave={(newTitle) => {
-              // Обновляем данные узла
               setNodes((nds) =>
                 nds.map((node) => {
                   if (node.id === id) {
@@ -830,23 +532,20 @@ document.addEventListener('mouseup', handleMouseUp);
           </span>
         </div>
         
-        {/* Кнопки управления обновлением данных */}
         <div className="chart-update-controls">
-          {/* Основная кнопка обновления */}
           <button
             className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}
-            disabled={!dataSourceInfo && (!data.lines || data.lines.length === 0)}
-            title={(dataSourceInfo || (data.lines && data.lines.length > 0)) ? 
+            disabled={!localLines || localLines.length === 0}
+            title={(localLines && localLines.length > 0) ? 
               (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД") : 
-              "Сначала выберите источник данных или добавьте линии"}
+              "Сначала добавьте линии через Sidebar"}
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
         </div>
       </div>
       
-
       <div 
         className="chart-node-content nodrag"
         ref={chartWrapperRef}
@@ -856,38 +555,33 @@ document.addEventListener('mouseup', handleMouseUp);
         onWheel={handleWheel}
         style={{ cursor: 'crosshair', userSelect: 'none' }}
       >
-        {Chart && (
-          <div
-            onMouseEnter={() => {
-              // Prevent ReactFlow panning when mouse enters chart area
-              if (chartWrapperRef.current) {
-                chartWrapperRef.current.style.cursor = 'default';
-              }
-            }}
-            onMouseLeave={() => {
-              // Reset cursor when leaving chart area
-              if (chartWrapperRef.current) {
-                chartWrapperRef.current.style.cursor = '';
-              }
-            }}
-          >
-            <Chart 
-              activeGraphUpdate={activeGraphUpdate}
-              chartData={chartData}
-              lines ={data.lines}
-              additionalSeries={additionalSeries}
-              width={nodeSize.width}
-              height={nodeSize.height - 50}
-              yScaleMode={yScaleMode}
-              isAutoUpdate={updateConfig.isAutoUpdate}
-            />
-          </div>
-        )}
+        <div
+          onMouseEnter={() => {
+            if (chartWrapperRef.current) {
+              chartWrapperRef.current.style.cursor = 'default';
+            }
+          }}
+          onMouseLeave={() => {
+            if (chartWrapperRef.current) {
+              chartWrapperRef.current.style.cursor = '';
+            }
+          }}
+        >
+          <Chart 
+            activeGraphUpdate={updateConfig.isAutoUpdate}
+            chartData={chartData}
+            lines={localLines}
+            additionalSeries={additionalSeries}
+            width={nodeSize.width}
+            height={nodeSize.height - 50}
+            yScaleMode={yScaleMode}
+            isAutoUpdate={updateConfig.isAutoUpdate}
+          />
+        </div>
       </div>
     </div>
   );
 };
-
 // Кастомный узел для источника данных
 const DataSourceNode = ({ data, isConnectable, selected, id }) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -1077,7 +771,7 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
   const [nodeSize, setNodeSize] = useState({ width: data.width || 800, height: data.height || 800 });
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
-    interval: 1000,
+    interval: 20,
     isAutoUpdate: false,
     lastUpdateTime: null
   });
@@ -1483,6 +1177,20 @@ const Graph = () => {
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodeCounter, setNodeCounter] = useState(1);
   const { updateNode } = useReactFlow();
+
+  useEffect(() => {
+    // Экспортируем функцию для обновления интервала
+    window.updateNodeInterval = (nodeId, newInterval) => {
+      // Находим подписку и обновляем
+      // (позже реализуем маппинг nodeId -> subscriptionId)
+      console.log(`[Graph] Обновление интервала для узла ${nodeId} на ${newInterval}ms`);
+      // TODO: реализовать обновление интервала в глобальном стриме
+    };
+    
+    return () => {
+      delete window.updateNodeInterval;
+    };
+  }, []);
 
   // Глобальная функция для обновления данных узла
   useEffect(() => {
