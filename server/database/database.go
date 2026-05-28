@@ -103,10 +103,3 @@ func IsConnected() bool {
 	}
 	return sqlDB.Ping() == nil
 }
-
-// GetDB возвращает GORM экземпляр базы данных
-func GetDB() *gorm.DB {
-	mu.RLock()
-	defer mu.RUnlock()
-	return DB
-}

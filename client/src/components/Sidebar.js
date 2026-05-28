@@ -46,7 +46,7 @@ const Sidebar = ({
     paramError: ''
   });
 
-  // Функция загрузки таблиц из БД
+   // Функция загрузки таблиц из БД
   const loadTables = useCallback(async () => {
     try {
       setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
@@ -64,11 +64,6 @@ const Sidebar = ({
           tables: tableNames,
           isLoadingParams: false
         }));
-      } else {
-        setChartParams(prev => ({
-          ...prev,
-          isLoadingParams: false
-        }));
       }
     } catch (err) {
       setChartParams(prev => ({
@@ -79,9 +74,10 @@ const Sidebar = ({
     }
   }, []);
 
+
   // Загрузка линий при выборе графика
   useEffect(() => {
-    if (selectedNode && (selectedNode.type === 'chartNode' || selectedNode.type === 'radialChartNode')) {
+    if (selectedNode && (selectedNode.type === 'linearChartNode' || selectedNode.type === 'radialChartNode')) {
       const chartId = selectedNode.id;
       
       // Если у графика еще нет линий, создаем одну линию по умолчанию
@@ -92,10 +88,8 @@ const Sidebar = ({
           table: '',
           xAxis: '',
           yAxis: '',
-          angleAxis: '', // для радиального графика
-          magnitudeAxis: '', // для радиального графика
           color: getRandomColor(),
-          data: [] // данные будут приходить из GlobalDataStream
+          data: []
         };
         
         setChartLines(prev => ({
@@ -120,58 +114,64 @@ const Sidebar = ({
 
   // Загрузка таблиц при монтировании компонента и при смене БД
   useEffect(() => {
+    // Загружаем таблицы при первом рендере
     loadTables();
     
+    // Слушатель события смены БД
     const handleDbConnectionChange = (event) => {
-      console.log('Обнаружена смена БД, перезагружаем таблицы...', event.detail);
+      console.log('Обнаружена смену БД, перезагружаем таблицы...', event.detail);
+      
+      // Очищаем кэш столбцов при смене БД
       setTableColumnsCache({});
+      
+      // Перезагружаем список таблиц из новой БД
       loadTables();
     };
     
     window.addEventListener('db-connection-changed', handleDbConnectionChange);
     
+    // Очистка слушателя при размонтировании компонента
     return () => {
       window.removeEventListener('db-connection-changed', handleDbConnectionChange);
     };
   }, [loadTables]);
 
-  // Добавить линию
+
+  //Добавить линию
   const addLine = () => {
-    if (!selectedNode || (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode')) return;
-    
-    const chartId = selectedNode.id;
-    const currentNextId = nextLineIds[chartId] || 1;
-    
-    const newLine = {
-      id: `line-${currentNextId}`,
-      name: `Линия ${currentNextId}`,
-      table: '',
-      xAxis: '',
-      yAxis: '',
-      angleAxis: '',
-      magnitudeAxis: '',
-      color: getRandomColor(),
-      data: []
-    };
-    
-    const updatedLines = [...(chartLines[chartId] || []), newLine];
-    
-    setChartLines(prev => ({
-      ...prev,
-      [chartId]: updatedLines
-    }));
-    
-    setNextLineIds(prev => ({
-      ...prev,
-      [chartId]: currentNextId + 1
-    }));
-    
-    setCurrentLines(updatedLines);
+  if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
+  
+  const chartId = selectedNode.id;
+  const currentNextId = nextLineIds[chartId] || 1;
+  
+  const newLine = {
+    id: `line-${currentNextId}`,
+    name: `Линия ${currentNextId}`,
+    table: '',
+    xAxis: '',
+    yAxis: '',
+    color: getRandomColor(),
+    data: []
   };
+  
+  const updatedLines = [...(chartLines[chartId] || []), newLine];
+  
+  setChartLines(prev => ({
+    ...prev,
+    [chartId]: updatedLines
+  }));
+  
+  setNextLineIds(prev => ({
+    ...prev,
+    [chartId]: currentNextId + 1
+  }));
+  
+  setCurrentLines(updatedLines);
+};
 
   // Удалить линию
   const removeLine = (lineId) => {
-    if (!selectedNode || (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode')) return;
+    if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
     
     const chartId = selectedNode.id;
     const updatedLines = (chartLines[chartId] || []).filter(line => line.id !== lineId);
@@ -186,7 +186,7 @@ const Sidebar = ({
 
   // Обновить параметры линии
   const updateLine = (lineId, field, value) => {
-    if (!selectedNode || (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode')) return;
+    if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
     
     const chartId = selectedNode.id;
     const updatedLines = (chartLines[chartId] || []).map(line => 
@@ -201,7 +201,7 @@ const Sidebar = ({
     setCurrentLines(updatedLines);
   };
 
-  // Загрузить столбцы для выбранной таблицы линии (только метаданные, без данных)
+  // Загрузить столбцы для выбранной таблицы линии
   const loadColumnsForLine = async (lineId, tableName) => {
     if (!tableName) return;
     
@@ -221,18 +221,6 @@ const Sidebar = ({
         col.toLowerCase().includes('measurement')
       ) || columns[1] || '';
       
-      const angleAxis = columns.find(col => 
-        col.toLowerCase().includes('angle') || 
-        col.toLowerCase().includes('phase') ||
-        col.toLowerCase().includes('deg')
-      ) || columns[0] || '';
-      
-      const magnitudeAxis = columns.find(col => 
-        col.toLowerCase().includes('magnitude') || 
-        col.toLowerCase().includes('value') ||
-        col.toLowerCase().includes('length')
-      ) || columns[1] || '';
-      
       const chartId = selectedNode.id;
       const updatedLines = currentLines.map(line => 
         line.id === lineId 
@@ -241,9 +229,7 @@ const Sidebar = ({
               table: tableName,
               xAxis: xAxis,
               yAxis: yAxis,
-              angleAxis: angleAxis,
-              magnitudeAxis: magnitudeAxis,
-              name: (selectedNode.type === 'radialChartNode' ? magnitudeAxis : yAxis) || line.name
+              name: yAxis || line.name
             } 
           : line
       );
@@ -290,18 +276,6 @@ const Sidebar = ({
           col.toLowerCase().includes('measurement')
         ) || columns[1] || '';
         
-        const angleAxis = columns.find(col => 
-          col.toLowerCase().includes('angle') || 
-          col.toLowerCase().includes('phase') ||
-          col.toLowerCase().includes('deg')
-        ) || columns[0] || '';
-        
-        const magnitudeAxis = columns.find(col => 
-          col.toLowerCase().includes('magnitude') || 
-          col.toLowerCase().includes('value') ||
-          col.toLowerCase().includes('length')
-        ) || columns[1] || '';
-        
         const chartId = selectedNode.id;
         const updatedLines = currentLines.map(line => 
           line.id === lineId 
@@ -310,9 +284,7 @@ const Sidebar = ({
                 table: tableName,
                 xAxis: xAxis,
                 yAxis: yAxis,
-                angleAxis: angleAxis,
-                magnitudeAxis: magnitudeAxis,
-                name: (selectedNode.type === 'radialChartNode' ? magnitudeAxis : yAxis) || line.name
+                name: yAxis || line.name
               } 
             : line
         );
@@ -327,82 +299,209 @@ const Sidebar = ({
     }
   };
 
-  // Применить все линии к графику (только метаданные, данные будут через GlobalDataStream)
-  const applyAllLines = async () => {
-    if (!selectedNode || currentLines.length === 0) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: 'Добавьте хотя бы одну линию'
-      }));
-      return;
+  // Загрузить данные для конкретной линии
+  const loadLineData = async (line) => {
+    if (!line.table || !line.xAxis || !line.yAxis) {
+      return null;
     }
-    
-    // Проверяем, что выбран узел графика
-    if (selectedNode.type !== 'chartNode' && selectedNode.type !== 'radialChartNode') {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: 'Выберите график для применения линий'
-      }));
-      return;
-    }
-    
-    // Проверяем, что все линии заполнены (в зависимости от типа графика)
-    let invalidLines;
-    if (selectedNode.type === 'radialChartNode') {
-      invalidLines = currentLines.filter(line => !line.table || !line.angleAxis || !line.magnitudeAxis);
-    } else {
-      invalidLines = currentLines.filter(line => !line.table || !line.xAxis || !line.yAxis);
-    }
-    
-    if (invalidLines.length > 0) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: 'Заполните все параметры для каждой линии'
-      }));
-      return;
-    }
-    
-    setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
     
     try {
-      const chartId = selectedNode.id;
+      const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
       
-      // Очищаем старые данные в линиях (новые данные придут из GlobalDataStream)
-      const updatedLines = currentLines.map(line => ({
-        ...line,
-        data: [] // Очищаем данные, они загрузятся через GlobalDataStream
-      }));
+      const response = await fetch(`${API_BASE_URL}/execute-query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql })
+      });
+
+      if (!response.ok) throw new Error('Ошибка загрузки данных');
       
-      setChartLines(prev => ({
-        ...prev,
-        [chartId]: updatedLines
-      }));
-      setCurrentLines(updatedLines);
+      const result = await response.json();
+      const data = result.data || result;
       
-      // Отправляем метаданные в узел (без данных)
-      if (window.updateNodeData && selectedNode) {
-        window.updateNodeData(selectedNode.id, {
-          lines: updatedLines.map(({ data, ...rest }) => rest), // Отправляем без data
-          timestamp: Date.now()
+      // Форматируем данные для графика
+      const formattedData = data
+        .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
+        .map((row) => {
+          const yValue = parseFloat(row[line.yAxis]);
+          const xValue = row[line.xAxis];
+          
+          let timeValue;
+          if (xValue instanceof Date) {
+            timeValue = xValue.getTime() / 1000;
+          } else if (typeof xValue === 'string') {
+            const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+            if (fullDateMatch) {
+              const date = new Date(xValue);
+              if (!isNaN(date.getTime())) {
+                timeValue = date.getTime() / 1000;
+              } else {
+                timeValue = parseFloat(xValue) || 0;
+              }
+            } else {
+              const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
+              if (timeMatch) {
+                const hours = parseInt(timeMatch[1]) || 0;
+                const minutes = parseInt(timeMatch[2]) || 0;
+                const seconds = parseInt(timeMatch[3]) || 0;
+                let milliseconds = 0;
+                if (timeMatch[4]) {
+                  const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+                  milliseconds = parseInt(msString, 10);
+                }
+                timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+              } else {
+                timeValue = parseFloat(xValue) || 0;
+              }
+            }
+          } else {
+            timeValue = parseFloat(xValue) || 0;
+          }
+          
+          return {
+            time: timeValue,
+            value: isNaN(yValue) ? 0 : yValue,
+            originalTime: xValue,
+            originalValue: row[line.yAxis],
+            seriesId: line.id,
+            timestamp: Date.now()
+          };
         });
-      }
       
-      setChartParams(prev => ({
-        ...prev,
-        paramError: '',
-        isLoadingParams: false
-      }));
+      // Сортируем по времени
+      formattedData.sort((a, b) => a.time - b.time);
       
-      console.log(`Применено ${updatedLines.length} линий для ${selectedNode.type} #${selectedNode.id}`);
+      return formattedData;
       
     } catch (err) {
-      setChartParams(prev => ({
-        ...prev,
-        paramError: `Ошибка применения линий: ${err.message}`,
-        isLoadingParams: false
-      }));
+      console.error(`Ошибка загрузки данных для линии ${line.id}:`, err);
+      return null;
     }
   };
+
+  // Загрузить данные для линии радиального графика (угол + длина)
+const loadRadialLineData = async (line) => {
+  if (!line.table || !line.angleAxis || !line.magnitudeAxis) {
+    return null;
+  }
+  
+  try {
+    const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
+    
+    const response = await fetch(`${API_BASE_URL}/execute-query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql })
+    });
+
+    if (!response.ok) throw new Error('Ошибка загрузки данных');
+    
+    const result = await response.json();
+    const data = result.data || result;
+    
+    // Форматируем данные для полярного графика
+    const formattedData = data
+      .filter(row => row[line.angleAxis] != null && row[line.magnitudeAxis] != null)
+      .map((row) => {
+        const angleValue = parseFloat(row[line.angleAxis]);
+        const magnitudeValue = parseFloat(row[line.magnitudeAxis]);
+        
+        return {
+          angle: isNaN(angleValue) ? 0 : angleValue,
+          value: isNaN(magnitudeValue) ? 0 : magnitudeValue,
+          originalAngle: row[line.angleAxis],
+          originalMagnitude: row[line.magnitudeAxis],
+          seriesId: line.id,
+          timestamp: Date.now()
+        };
+      });
+    
+    return formattedData;
+    
+  } catch (err) {
+    console.error(`Ошибка загрузки данных для радиальной линии ${line.id}:`, err);
+    return null;
+  }
+};
+
+  // Применить все линии к графику
+  const applyAllLines = async () => {
+  if (!selectedNode || currentLines.length === 0) {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: 'Добавьте хотя бы одну линию'
+    }));
+    return;
+  }
+  
+  // Проверяем, что выбран узел графика (любого типа)
+  if (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode') {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: 'Выберите график для применения линий'
+    }));
+    return;
+  }
+  
+  // Проверяем, что все линии заполнены
+  const invalidLines = currentLines.filter(line => !line.table || !line.xAxis || !line.yAxis);
+  if (invalidLines.length > 0) {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: 'Заполните все параметры для каждой линии'
+    }));
+    return;
+  }
+  
+  setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
+  
+  try {
+    const loadPromises = currentLines.map(line => {
+      if (selectedNode.type === 'radialChartNode') {
+        return loadRadialLineData(line);
+      } else {
+        return loadLineData(line);
+      }
+    });
+    const allData = await Promise.all(loadPromises);
+    
+    const updatedLines = currentLines.map((line, index) => ({
+      ...line,
+      data: allData[index] || []
+    }));
+    
+    const chartId = selectedNode.id;
+    setChartLines(prev => ({
+      ...prev,
+      [chartId]: updatedLines
+    }));
+    setCurrentLines(updatedLines);
+    
+    // Отправляем данные в узел
+    if (window.updateNodeData && selectedNode) {
+      window.updateNodeData(selectedNode.id, {
+        lines: updatedLines,
+        timestamp: Date.now()
+      });
+    }
+    
+    setChartParams(prev => ({
+      ...prev,
+      paramError: '',
+      isLoadingParams: false
+    }));
+    
+    console.log(`Загружено ${updatedLines.length} линий на ${selectedNode.type} #${selectedNode.id}`);
+    
+  } catch (err) {
+    setChartParams(prev => ({
+      ...prev,
+      paramError: `Ошибка применения линий: ${err.message}`,
+      isLoadingParams: false
+    }));
+  }
+};
+
 
   // Функция переключения сайдбара
   const toggleSidebar = useCallback(() => {
@@ -641,7 +740,7 @@ const Sidebar = ({
                   <div className="selected-node-info">
                     <div className="selected-node-header">
                       <span className="badge bg-primary">
-                          {selectedNode.type === 'chartNode' && 'Линейный график'}
+                          {selectedNode.type === 'linearChartNode' && 'Линейный график'}
                           {selectedNode.type === 'radialChartNode' && 'Радиальный график'}
                           {selectedNode.type === 'dataSourceNode' && 'Источник'}
                           {selectedNode.type === 'processorNode' && 'Обработчик'}
@@ -683,7 +782,7 @@ const Sidebar = ({
                           </div>
                         ) : (
                           <div className="lines-list">
-                            {currentLines.map((line) => (
+                            {currentLines.map((line, index) => (
                               <div key={line.id} className="line-item card mb-2" style={{ fontSize: '12px' }}>
                                 <div className="card-body p-2">
                                   {/* Заголовок линии с цветом и удалением */}
@@ -835,7 +934,7 @@ const Sidebar = ({
                               {chartParams.isLoadingParams ? (
                                 <>
                                   <span className="spinner-border spinner-border-sm me-1" role="status"></span>
-                                  Применение...
+                                  Загрузка...
                                 </>
                               ) : (
                                 <>
@@ -853,15 +952,9 @@ const Sidebar = ({
                             <div className="spinner-border spinner-border-sm text-primary" role="status">
                               <span className="visually-hidden">Загрузка...</span>
                             </div>
-                            <small className="text-muted d-block mt-1">Применение параметров...</small>
+                            <small className="text-muted d-block mt-1">Загрузка данных...</small>
                           </div>
                         )}
-
-                        {/* Информация о том, откуда берутся данные */}
-                        <div className="alert alert-info py-1 px-2 mt-2" style={{ fontSize: '10px' }}>
-                          <i className="bi bi-info-circle me-1"></i>
-                          Данные будут автоматически загружаться через глобальный стрим после включения автообновления на графике
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -871,7 +964,7 @@ const Sidebar = ({
           </>
         )}
 
-        {/* Ресайзер */}
+        {/* Ресайзер с улучшенной визуализацией */}
         <div 
           className={`sidebar-resizer ${isResizing ? 'active' : ''}`}
           onMouseDown={handleMouseDown}
