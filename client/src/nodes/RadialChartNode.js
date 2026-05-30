@@ -3,6 +3,7 @@ import { useReactFlow } from '@xyflow/react';
 import RadialChart from '../components/RadialChart';
 import EditableTitle from './EditableTitle';
 import CustomResizer from './CustomResizer';
+import * as pollManager from '../services/pollManager';
 
 const RadialChartNode = ({ data, isConnectable, selected, id }) => {
   const { getNode, setNodes } = useReactFlow();
@@ -14,94 +15,92 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
     lastUpdateTime: null
   });
   const [currentLines, setCurrentLines] = useState([]);
-  const [pollingIntervalId, setPollingIntervalId] = useState(null);
   const nodeRef = useRef(null);
-  const isUpdatingRef = useRef(false);
 
-  const API_BASE_URL = 'http://localhost:8080/api';
+  // Ключ линии в общем координаторе автообновления.
+  const lineKey = useCallback((lineId) => `${id}:${lineId}`, [id]);
 
-  // Функция для загрузки данных всех линий из БД (автообновление)
-  const fetchLinesDataFromDB = useCallback(async () => {
-    if (isUpdatingRef.current || !currentLines || currentLines.length === 0) return;
+  // Строит SQL-запросы всех настроенных линий для пакетной отправки.
+  const getQueries = useCallback(() => {
+    if (!currentLines || currentLines.length === 0) return [];
+    return currentLines
+      .filter(line => line.table && line.angleAxis && line.magnitudeAxis)
+      .map(line => ({
+        key: lineKey(line.id),
+        sql: `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 1`
+      }));
+  }, [currentLines, lineKey]);
 
-    isUpdatingRef.current = true;
-    try {
-      const loadPromises = currentLines.map(async (line) => {
-        if (!line.table || !line.angleAxis || !line.magnitudeAxis) return { ...line, data: [] };
-        
-        const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 1`;
-        
-        const response = await fetch(`${API_BASE_URL}/execute-query`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sql })
-        });
+  // Принимает строки из пакетного ответа и обновляет данные узла.
+  const applyResults = useCallback((rowsByKey) => {
+    if (!currentLines || currentLines.length === 0) return;
 
-        if (!response.ok) throw new Error(`Ошибка загрузки для ${line.name}`);
-        
-        const result = await response.json();
-        const dbData = result.data || result;
-        
-        if (dbData.length > 0) {
-          const row = dbData[0];
-          const angleValue = parseFloat(row[line.angleAxis]);
-          const magnitudeValue = parseFloat(row[line.magnitudeAxis]);
-          
+    const updatedLines = currentLines.map((line) => {
+      if (!line.table || !line.angleAxis || !line.magnitudeAxis) {
+        return { ...line, data: [] };
+      }
+
+      const dbData = rowsByKey[lineKey(line.id)] || [];
+      if (dbData.length > 0) {
+        const row = dbData[0];
+        const angleValue = parseFloat(row[line.angleAxis]);
+        const magnitudeValue = parseFloat(row[line.magnitudeAxis]);
+
+        return {
+          ...line,
+          data: [{
+            angle: isNaN(angleValue) ? 0 : angleValue,
+            value: isNaN(magnitudeValue) ? 0 : magnitudeValue,
+            timestamp: Date.now()
+          }]
+        };
+      }
+
+      return { ...line, data: [] };
+    });
+
+    setCurrentLines(updatedLines);
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id && node.type === 'radialChartNode') {
           return {
-            ...line,
-            data: [{
-              angle: isNaN(angleValue) ? 0 : angleValue,
-              value: isNaN(magnitudeValue) ? 0 : magnitudeValue,
-              timestamp: Date.now()
-            }]
+            ...node,
+            data: {
+              ...node.data,
+              lines: updatedLines,
+              updateTimestamp: Date.now()
+            }
           };
         }
-        
-        return { ...line, data: [] };
-      });
-      
-      const updatedLines = await Promise.all(loadPromises);
-      setCurrentLines(updatedLines);
+        return node;
+      })
+    );
+  }, [id, setNodes, currentLines, lineKey]);
 
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === id && node.type === 'radialChartNode') {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                lines: updatedLines,
-                updateTimestamp: Date.now()
-              }
-            };
-          }
-          return node;
-        })
-      );
-    } catch (err) {
-      console.error('Ошибка автообновления радиального графика:', err);
-    } finally {
-      isUpdatingRef.current = false;
-    }
-  }, [id, setNodes, currentLines]);
+  // Координатор вызывает эти колбэки на каждом тике. Держим их в ref, чтобы
+  // подписка не пересоздавалась при каждом обновлении данных (иначе сбрасывался
+  // бы индивидуальный интервал графика).
+  const subscriptionRef = useRef({});
+  subscriptionRef.current = {
+    interval: updateConfig.interval,
+    getQueries,
+    onResults: applyResults
+  };
 
-  // Запуск/остановка опроса БД
+  // Подписка на общий координатор автообновления.
+  // Запросы всех графиков объединяются в один пакетный запрос к серверу.
   useEffect(() => {
-    if (updateConfig.isAutoUpdate) {
-      const hasLines = currentLines && currentLines.length > 0;
-      if (hasLines) {
-        fetchLinesDataFromDB();
-        const interval = setInterval(fetchLinesDataFromDB, updateConfig.interval);
-        setPollingIntervalId(interval);
-        return () => clearInterval(interval);
-      }
-    } else {
-      if (pollingIntervalId) {
-        clearInterval(pollingIntervalId);
-        setPollingIntervalId(null);
-      }
-    }
-  }, [updateConfig.isAutoUpdate, updateConfig.interval, fetchLinesDataFromDB]);
+    if (!updateConfig.isAutoUpdate) return;
+
+    pollManager.subscribe(id, {
+      getInterval: () => subscriptionRef.current.interval,
+      getQueries: () => subscriptionRef.current.getQueries(),
+      onResults: (rows) => subscriptionRef.current.onResults(rows)
+    });
+
+    return () => pollManager.unsubscribe(id);
+  }, [id, updateConfig.isAutoUpdate]);
 
   const toggleAutoUpdate = useCallback(() => {
     setUpdateConfig(prev => ({ ...prev, isAutoUpdate: !prev.isAutoUpdate }));

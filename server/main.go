@@ -17,7 +17,7 @@ func main() {
         Port:     5432,
         User:     "postgres",
         Password: "123",
-        DBName:   "pmu",
+        DBName:   "test",
     }
 
     // Инициализация БД
@@ -51,6 +51,7 @@ func main() {
         api.GET("/getparams", routes.GetDatabases)
         api.GET("/metadata", routes.GetDatabaseMetadata)    
         api.POST("/execute-query", routes.HandleSQLQuery)
+        api.POST("/execute-batch", routes.HandleSQLQueryBatch)
         
 
         //Эндпоинты админки

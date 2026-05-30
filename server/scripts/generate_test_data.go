@@ -23,7 +23,7 @@ func (PMUMeasurement) TableName() string {
 
 func main() {
 	// Подключение к БД PMU
-	dsn := "host=localhost port=5432 user=postgres password=123 dbname=pmu sslmode=disable TimeZone=UTC"
+	dsn := "host=localhost port=5432 user=postgres password=123 dbname=test sslmode=disable TimeZone=UTC"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Ошибка подключения к БД: %v", err)

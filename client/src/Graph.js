@@ -164,7 +164,7 @@ const Graph = () => {
       type: 'linearChartNode',
       dragHandle: '.chart-node-header',
       position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 50 },
-      data: { label: `Линейный график ${nodeCounter}`, width: 1200, height: 600 }
+      data: { label: `Линейный график ${nodeCounter}`, width: 1200, height: 600 } 
     }]);
     setNodeCounter((prev) => prev + 1);
   }, [nodeCounter, setNodes]);
