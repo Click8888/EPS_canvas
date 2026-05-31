@@ -66,11 +66,138 @@
   cursor: crosshair;
 }
 
+/* Сглаживание HTML-наложений поверх канваса (тултип, кнопка сброса, бейджи)
+   у линейной и радиальной ноды. На сам канвас не влияет — там чёткость даёт
+   devicePixelRatio. Свойства не задаются в других .chart-node-content правилах,
+   поэтому применяются независимо от порядка в каскаде. */
+.chart-node-content {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+/* Курсор над областью линейного графика — crosshair, как в легенде.
+   !important и вложенный * нужны, чтобы перебить inline-курсор, который zrender
+   выставляет на корневом элементе/канвасе ECharts при наведении. */
+.chart-canvas-area,
+.chart-canvas-area * {
+  cursor: crosshair !important;
+}
+
+/* Разделитель для регулировки ширины колонки легенды (перетаскивание мышью).
+   Сам элемент — прозрачная зона захвата 6px; видимая линия тонкая (2px) и
+   рисуется по центру через ::before. */
+.legend-resizer {
+  flex: 0 0 6px;
+  align-self: stretch;
+  cursor: col-resize;
+  background-color: transparent;
+  position: relative;
+}
+
+.legend-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background-color: var(--border-color);
+  transition: background-color 0.15s;
+}
+
+.legend-resizer:hover::before {
+  background-color: #4dabf7;
+}
+
+/* Во время перетаскивания разделителя держим col-resize по всему документу,
+   перебивая в т.ч. crosshair над областью графика. */
+body.resizing-legend,
+body.resizing-legend * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 .chart-node-footer {
   background-color: var(--bg-primary);
   padding: 5px 15px;
   border-top: 1px solid  var(--border-color);
   font-size: 11px;
+}
+
+/* Контролы автообновления в шапке графика: интервал + лимит точек */
+.chart-update-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.chart-control-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 6px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.chart-control-field i {
+  color: #4dabf7;
+  font-size: 12px;
+}
+
+.chart-control-field input {
+  width: 56px;
+  padding: 1px 4px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 11px;
+  text-align: right;
+}
+
+.chart-control-field input:focus {
+  outline: none;
+  border-color: #4dabf7;
+}
+
+.chart-control-unit {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+/* Кнопка подтверждения интервала/лимита точек */
+.chart-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  background-color: #4dabf7;
+  border: 1px solid #4dabf7;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.chart-apply-btn:hover:not(:disabled) {
+  background-color: #339af0;
+  border-color: #339af0;
+  color: #fff;
+}
+
+.chart-apply-btn:disabled {
+  background-color: transparent;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+  opacity: 0.6;
+  cursor: default;
 }
 
 .data-source-node {

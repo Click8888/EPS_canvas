@@ -8,6 +8,7 @@ import {
 import { CustomChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
 import ReactECharts from "echarts-for-react";
+import { useResizableLegend } from './useResizableLegend';
 
 echarts.use([
   PolarComponent,
@@ -60,29 +61,18 @@ const Legend = ({ vectors, maxMagnitude, isDark }) => {
   const isHighDPI = dpr >= 2;
 
   const legendStyles = {
-    position: 'absolute',
-    top: '12px',
-    right: '12px',
-    backgroundColor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-    borderRadius: '12px',
+    // Боковая колонка справа (раньше — плавающий оверлей в углу).
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
     padding: '14px',
-    minWidth: '240px',
-    maxWidth: '320px',
-    maxHeight: 'calc(100% - 24px)',
     overflowY: 'auto',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
-    border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}`,
-    boxShadow: isHighDPI
-      ? `0 4px 24px rgba(0,0,0,0.15), 0 0 0 0.5px ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`
-      : `0 4px 24px rgba(0,0,0,0.15)`,
-    zIndex: 10,
     fontSize: '12px',
-    pointerEvents: 'none',
+    pointerEvents: 'auto',
     fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif`,
     letterSpacing: '0.01em',
-    transform: 'translateZ(0)',
-    willChange: 'transform',
     WebkitFontSmoothing: 'antialiased',
     MozOsxFontSmoothing: 'grayscale',
     textRendering: 'geometricPrecision'
@@ -90,7 +80,7 @@ const Legend = ({ vectors, maxMagnitude, isDark }) => {
 
   if (!vectors || vectors.length === 0) {
     return (
-      <div className="radial-legend" style={legendStyles}>
+      <div className="radial-legend nowheel" style={legendStyles}>
         <div style={{
           textAlign: 'center',
           color: isDark ? '#aaa' : '#666',
@@ -105,7 +95,7 @@ const Legend = ({ vectors, maxMagnitude, isDark }) => {
   }
 
   return (
-    <div className="radial-legend" style={legendStyles}>
+    <div className="radial-legend nowheel" style={legendStyles}>
       <div style={{
         fontWeight: '600',
         marginBottom: '12px',
@@ -220,6 +210,7 @@ const RadialChart = ({
   // Сохраняем векторы в ref для доступа в renderItem и tooltip
   const vectorsRef = useRef([]);
   const maxMagRef = useRef(100);
+  const containerRef = useRef(null); // внешний flex-контейнер (график + легенда)
 
   // Преобразование данных линий в векторы
   const processLinesToVectors = useCallback(() => {
@@ -488,28 +479,46 @@ const RadialChart = ({
   const vectors = processLinesToVectors();
   const maxMag = getMaxMagnitude(vectors);
 
+  // Авто-ширина боковой колонки легенды (~28%, [220,360]px) — стартовое значение;
+  // дальше пользователь может менять её, перетаскивая разделитель.
+  const totalW = typeof width === 'number' ? width : null;
+  const defaultLegendWidth = totalW ? Math.min(360, Math.max(220, Math.round(totalW * 0.28))) : 280;
+  const [legendWidth, startLegendResize] = useResizableLegend(containerRef, totalW, defaultLegendWidth);
+
   return (
-    <div style={{ 
-      width, 
-      height, 
-      position: 'relative',
+    <div ref={containerRef} style={{
+      width,
+      height,
+      display: 'flex',
       backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
       borderRadius: '12px',
       overflow: 'hidden'
     }}>
-      <Legend vectors={vectors} maxMagnitude={maxMag} isDark={isDark} />
-      
-      <ReactECharts
-        ref={chartRef}
-        option={option || {}}
-        notMerge={true}
-        lazyUpdate={false}
-        style={{ width: '100%', height: '100%' }}
-        opts={{ 
-          renderer: 'canvas',
-          devicePixelRatio: Math.min(dpr * 2, 4)
-        }}
+      <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative' }}>
+        <ReactECharts
+          ref={chartRef}
+          option={option || {}}
+          notMerge={true}
+          lazyUpdate={false}
+          style={{ width: '100%', height: '100%' }}
+          opts={{
+            renderer: 'canvas',
+            // Суперсэмплинг: рендерим канвас в повышенной плотности пикселей →
+            // чёткие линии/стрелки и подписи. Та же стратегия, что в линейном графике.
+            devicePixelRatio: Math.min(dpr * 2, 4)
+          }}
+        />
+      </div>
+
+      <div
+        className="legend-resizer nodrag"
+        onMouseDown={startLegendResize}
+        title="Потяните, чтобы изменить ширину легенды"
       />
+
+      <div style={{ width: legendWidth, flexShrink: 0, height: '100%' }}>
+        <Legend vectors={vectors} maxMagnitude={maxMag} isDark={isDark} />
+      </div>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as echarts from 'echarts/core';
 import {
   TitleComponent,
@@ -9,6 +9,8 @@ import { LineChart } from 'echarts/charts';
 import { UniversalTransition } from 'echarts/features';
 import { CanvasRenderer } from 'echarts/renderers';
 import ReactECharts from "echarts-for-react";
+import { useTheme } from './ThemeContext';
+import { useResizableLegend } from './useResizableLegend';
 
 echarts.use([
   TitleComponent,
@@ -197,6 +199,11 @@ const defaultOption = {
   animation: false,
   animationDuration: 0,
   animationEasing: 'linear',
+  // Глобальный шрифт всего текста на канвасе (подписи осей, тултип) — единый
+  // чёткий стек, согласованный с радиальным графиком.
+  textStyle: {
+    fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+  },
   // legend: {
   //   show: false,  // По умолчанию скрыта, будет показана при множественных линиях
   //   data: [],
@@ -295,6 +302,7 @@ const defaultOption = {
   },
   dataZoom: [
     {
+      id: 'insideZoom',
       show: true,
       type: 'inside',
       filterMode: 'none',
@@ -331,24 +339,142 @@ const defaultOption = {
   }
 };
 
-const Chart = ({ 
+// Multi-line форматтер тултипа. Определён один раз на уровне модуля,
+// чтобы не пересоздавать функцию на каждом обновлении данных.
+const multiLineTooltipFormatter = (params) => {
+  if (!params || params.length === 0) return '';
+  const formattedTime = formatTimeOnly(params[0].value[0]);
+  let tooltipContent = `Время: ${formattedTime}<br/>`;
+  params.forEach(param => {
+    const value = param.value[1];
+    tooltipContent += `<span style="display:inline-block;width:10px;height:10px;background-color:${param.color};border-radius:50%;margin-right:5px;"></span>`;
+    tooltipContent += `${param.seriesName}: ${parseFloat(value.toFixed(6)).toString()}<br/>`;
+  });
+  return tooltipContent;
+};
+
+// Форматирование значения легенды (короткое, без лишних нулей).
+const formatLegendValue = (v) => {
+  if (v === undefined || v === null || isNaN(v)) return '—';
+  return parseFloat(Number(v).toFixed(6)).toString();
+};
+
+// Боковая легенда линейного графика: список линий (цвет + имя + последнее значение).
+const LinearLegend = ({ entries, isDark }) => {
+  const panelStyle = {
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
+    overflowY: 'auto',
+    padding: '14px',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    color: isDark ? '#fff' : '#333',
+    fontSize: '12px',
+    fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+    WebkitFontSmoothing: 'antialiased',
+    MozOsxFontSmoothing: 'grayscale'
+  };
+
+  if (!entries || entries.length === 0) {
+    return (
+      <div className="nowheel" style={panelStyle}>
+        <div style={{ textAlign: 'center', color: isDark ? '#aaa' : '#888', padding: '24px 8px' }}>
+          <i className="bi bi-info-circle" style={{ fontSize: '28px', display: 'block', marginBottom: '10px', opacity: 0.6 }}></i>
+          <div style={{ fontSize: '13px', fontWeight: 500 }}>Нет линий</div>
+          <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>Добавьте линии для отображения</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="nowheel" style={panelStyle}>
+      <div style={{
+        fontWeight: 600,
+        marginBottom: '12px',
+        paddingBottom: '8px',
+        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '13px'
+      }}>
+        <i className="bi bi-graph-up" style={{ fontSize: '14px' }}></i>
+        <span>Линии</span>
+        <span style={{
+          marginLeft: 'auto',
+          fontSize: '11px',
+          backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
+          padding: '2px 8px',
+          borderRadius: '20px',
+          fontWeight: 500
+        }}>
+          {entries.length}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {entries.map((entry, index) => (
+          <div
+            key={entry.id ?? index}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              padding: '8px 10px',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '8px',
+              borderLeft: `3px solid ${entry.color}`
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '2px',
+                backgroundColor: entry.color,
+                flexShrink: 0
+              }}></span>
+              <span style={{ flex: 1, fontWeight: 500, fontSize: '12px', wordBreak: 'break-word' }}>
+                {entry.name}
+              </span>
+            </div>
+            <div style={{
+              paddingLeft: '20px',
+              fontSize: '11px',
+              color: isDark ? '#ddd' : '#555',
+              fontFamily: `'SF Mono', 'Monaco', 'Cascadia Code', monospace`
+            }}>
+              {formatLegendValue(entry.lastValue)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Chart = ({
   activeGraphUpdate,
-  chartData, 
+  chartData,
   lines = [],
-  width = '100%', 
+  width = '100%',
   height = '600px',
   isAutoUpdate = false,
+  pointLimit = 200,
 }) => {
+  const { isDark } = useTheme();
   const chartRef = useRef(null);
-  const [option, setOption] = useState(defaultOption);
+  const containerRef = useRef(null); // внешний flex-контейнер (график + легенда)
   const chartInstanceRef = useRef(null);
   const [chartInstance, setChartInstance] = useState(null);
   const currentXRangeRef = useRef(null);
   // Состояние для отслеживания взаимодействия пользователя с графиком
   const [userInteracting, setUserInteracting] = useState(false);
   const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
-  const [currentXRange, setCurrentXRange] = useState(null); // Текущий диапазон X после зума 
+  const [, setCurrentXRange] = useState(null); // Диапазон X после зума (значение хранится в currentXRangeRef)
   const prevLinesDataRef = useRef(null);
+  const prevSeriesCountRef = useRef(0); // Сколько серий было в прошлый раз (для очистки удалённых линий)
 
   // ДОБАВИТЬ: Получаем devicePixelRatio для высокого качества
   const dpr = window.devicePixelRatio || 1;
@@ -357,26 +483,27 @@ const Chart = ({
 const formatLineDataForECharts = (data) => {
   if (!data || !Array.isArray(data)) return [];
 
-  // Ограничиваем отображение до последних 200 точек
-  const limitedData = data.length > 200 ? data.slice(-200) : data;
+  // Ограничиваем отображение последними pointLimit точками (настраивается per-график)
+  const limit = pointLimit > 0 ? pointLimit : data.length;
+  const limitedData = data.length > limit ? data.slice(-limit) : data;
   const formattedData = [];
 
   limitedData.forEach(item => {
     if (item && typeof item === 'object') {
-      let timeValue;
-      
-      // Извлекаем время
-      if (item.originalTime !== undefined) {
-        timeValue = item.originalTime;
+      // item.time уже содержит числовые секунды (вычислены при приёме данных) —
+      // используем их напрямую, не прогоняя regex по каждой точке каждый кадр.
+      // Строку (originalTime) парсим только как fallback для старого формата.
+      let timeInSeconds;
+      if (typeof item.time === 'number') {
+        timeInSeconds = item.time;
+      } else if (item.originalTime !== undefined) {
+        timeInSeconds = convertTimeToSeconds(item.originalTime);
       } else if (item.time !== undefined) {
-        timeValue = item.time;
+        timeInSeconds = convertTimeToSeconds(item.time);
       } else {
         return;
       }
-      
-      // Преобразуем время в секунды для числовой оси
-      const timeInSeconds = convertTimeToSeconds(timeValue);
-      
+
       // Извлекаем значение
       if (item.value !== undefined) {
         formattedData.push([timeInSeconds, item.value]);
@@ -408,113 +535,26 @@ const formatAllLinesForECharts = (lines) => {
   }));
 };
 
-// Функция для расчета диапазона Y на основе видимых данных X для всех линий
-const calculateYRange = (lines, xMin, xMax) => {
-  // Fallback на старый формат для обратной совместимости
-  if (!lines || !Array.isArray(lines) || lines.length === 0) {
-    if (chartData && Array.isArray(chartData)) {
-      return calculateYRangeForSingleLine(chartData, xMin, xMax);
-    }
-    return { min: 0, max: 100 };
-  }
-
+// Диапазон Y по уже отформатированным данным ([timeInSeconds, value]).
+// Один проход, без regex и parseFloat — числа уже готовы.
+// Используется в горячем пути обновления вместо calculateYRange(lines, ...),
+// который заново парсил время по каждой точке.
+const calcYRangeFromFormatted = (formattedLines, xMin, xMax) => {
   let minY = Infinity;
   let maxY = -Infinity;
+  const hasX = xMin !== null && xMin !== undefined && xMax !== null && xMax !== undefined;
 
-  // Проходим по всем линиям
-  lines.forEach(line => {
-    if (!line.data || !Array.isArray(line.data)) return;
-    
-    line.data.forEach(item => {
-      if (item && typeof item === 'object') {
-        let timeValue;
-        
-        if (item.originalTime !== undefined) {
-          timeValue = item.originalTime;
-        } else if (item.time !== undefined) {
-          timeValue = item.time;
-        } else {
-          return;
-        }
-        
-        const timeInSeconds = convertTimeToSeconds(timeValue);
-        
-        // Проверяем, попадает ли точка в видимый диапазон X
-        if (xMin !== null && xMax !== null) {
-          if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
-            const value = parseFloat(item.value);
-            if (!isNaN(value)) {
-              minY = Math.min(minY, value);
-              maxY = Math.max(maxY, value);
-            }
-          }
-        } else {
-          // Если диапазон X не определен, берем все данные
-          const value = parseFloat(item.value);
-          if (!isNaN(value)) {
-            minY = Math.min(minY, value);
-            maxY = Math.max(maxY, value);
-          }
-        }
-      }
-    });
-  });
-
-  // Если не нашли данных
-  if (minY === Infinity || maxY === -Infinity) {
-    return { min: 0, max: 100 };
-  }
-
-  // Добавляем 20% отступа сверху и снизу
-  const range = maxY - minY || 1;
-  const padding = range * 0.2;
-  
-  return {
-    min: minY - padding,
-    max: maxY + padding
-  };
-};
-
-// Вспомогательная функция для одной линии (для обратной совместимости)
-const calculateYRangeForSingleLine = (data, xMin, xMax) => {
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    return { min: 0, max: 100 };
-  }
-
-  let minY = Infinity;
-  let maxY = -Infinity;
-
-  data.forEach(item => {
-    if (item && typeof item === 'object') {
-      let timeValue;
-      
-      if (item.originalTime !== undefined) {
-        timeValue = item.originalTime;
-      } else if (item.time !== undefined) {
-        timeValue = item.time;
-      } else {
-        return;
-      }
-      
-      const timeInSeconds = convertTimeToSeconds(timeValue);
-      
-      if (xMin !== null && xMax !== null) {
-        if (timeInSeconds >= xMin && timeInSeconds <= xMax) {
-          const value = parseFloat(item.value);
-          if (!isNaN(value)) {
-            minY = Math.min(minY, value);
-            maxY = Math.max(maxY, value);
-          }
-        }
-      } else {
-        const value = parseFloat(item.value);
-        if (!isNaN(value)) {
-          minY = Math.min(minY, value);
-          maxY = Math.max(maxY, value);
-        }
-      }
+  for (const line of formattedLines) {
+    const data = line.data;
+    if (!data) continue;
+    for (let i = 0; i < data.length; i++) {
+      const x = data[i][0];
+      if (hasX && (x < xMin || x > xMax)) continue;
+      const y = data[i][1];
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
-  });
+  }
 
   if (minY === Infinity || maxY === -Infinity) {
     return { min: 0, max: 100 };
@@ -522,44 +562,70 @@ const calculateYRangeForSingleLine = (data, xMin, xMax) => {
 
   const range = maxY - minY || 1;
   const padding = range * 0.2;
-  
-  return {
-    min: minY - padding,
-    max: maxY + padding
-  };
+  return { min: minY - padding, max: maxY + padding };
 };
 
-  // Инициализация экземпляра графика
-useEffect(() => {
-  if (chartRef.current) {
-    try {
-      const instance = chartRef.current.getEchartsInstance();
-      if (instance && !instance.isDisposed()) {
-        chartInstanceRef.current = instance; // ✅ Сохраняем в ref
-        setChartInstance(instance);
-      }
-    } catch (error) {
-      console.error('Ошибка инициализации графика:', error);
+// Диапазон X по отформатированным данным с 10% отступа (для авто-режима).
+const calcXRangeFromFormatted = (formattedLines) => {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const line of formattedLines) {
+    const data = line.data;
+    if (!data) continue;
+    for (let i = 0; i < data.length; i++) {
+      const x = data[i][0];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
     }
   }
+  if (minX === Infinity) return null;
+  const range = maxX - minX || 1;
+  return { min: minX - range * 0.1, max: maxX + range * 0.1 };
+};
 
-  // ✅ Правильная очистка при размонтировании
-  return () => {
-    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
-      chartInstanceRef.current.dispose(); // ✅ Явно уничтожаем экземпляр
-    }
-    chartInstanceRef.current = null;
-    setChartInstance(null);
-  };
-}, []);
+  // Колбэк готовности графика. echarts-for-react создаёт инстанс асинхронно
+  // (временный → дожидается 'finished' → пересоздаёт с финальными размерами),
+  // поэтому синхронный getEchartsInstance() в useEffect мог вернуть уже
+  // уничтоженный временный инстанс. onChartReady вызывается с финальным.
+  const handleChartReady = useCallback((instance) => {
+    chartInstanceRef.current = instance;
+    setChartInstance(instance);
+  }, []);
 
-  // Начальная настройка графика ..........
-useEffect(() => {
-    // ✅ Используем ref и проверяем isDisposed
-    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
-      chartInstanceRef.current.setOption(defaultOption, true);
-    }
-  }, [chartInstance]);
+  // Очистка ссылки при размонтировании (сам инстанс диспозит echarts-for-react).
+  useEffect(() => {
+    return () => {
+      chartInstanceRef.current = null;
+    };
+  }, []);
+
+  // Tooltip и интерактивность зависят от режима автообновления, но не от данных.
+  // Ставим отдельным merge-апдейтом, чтобы горячий путь обновления данных
+  // не пересобирал tooltip/форматтеры на каждом тике.
+  // Во время автообновления полностью блокируем интеракции (тултип + зум/панорама),
+  // после остановки — возвращаем. show:true обязательно в ветке «выключено», иначе
+  // прежнее show:false не сбрасывается при merge и тултип остаётся скрытым.
+  useEffect(() => {
+    const inst = chartInstanceRef.current;
+    if (!inst || inst.isDisposed()) return;
+    inst.setOption({
+      tooltip: isAutoUpdate
+        ? { show: false }
+        : {
+            show: true,
+            trigger: 'axis',
+            axisPointer: { type: 'cross' },
+            formatter: multiLineTooltipFormatter
+          },
+      dataZoom: [{
+        id: 'insideZoom',
+        type: 'inside',
+        zoomOnMouseWheel: !isAutoUpdate,
+        moveOnMouseMove: !isAutoUpdate,
+        moveOnMouseWheel: false
+      }]
+    }, false);
+  }, [chartInstance, isAutoUpdate]);
 
   // Отслеживание изменений диапазона X при зуме
 useEffect(() => {
@@ -601,14 +667,14 @@ useEffect(() => {
         if (newXRange) {
           currentXRangeRef.current = newXRange;
           setCurrentXRange(newXRange);
-          // Вычисляем новый диапазон Y для видимых данных
-          const yRange = calculateYRange(
-            lines.length > 0 ? lines : null,
+          // Вычисляем новый диапазон Y для видимых данных (по отформатированным данным)
+          const yRange = calcYRangeFromFormatted(
+            formatAllLinesForECharts(lines),
             newXRange.min,
             newXRange.max
           );
-          
-          // Обновляем только ось Y
+
+          // Обновляем только ось Y (merge, без пересоздания)
           chartInstance.setOption({
             yAxis: {
               min: yRange.min,
@@ -668,302 +734,207 @@ chartInstanceRef.current.on('dataZoom', handleDataZoomEvent);
     };
   }, [chartInstance]);
 
-// Обновление данных графика
+// При смене лимита точек возвращаемся к авто-следованию за данными: сбрасываем
+// сохранённый пользовательский зум/диапазон X. Иначе новые данные (другое
+// временное окно) могут оказаться вне замороженного диапазона — линия «исчезает»,
+// хотя тултип её находит. Объявлено ДО эффекта обновления данных, чтобы тот в том
+// же коммите прочитал уже сброшенный userInteractingRef.
 useEffect(() => {
-  if (!chartInstanceRef.current) return; //vvvv
+  userInteractingRef.current = false;
+  setUserInteracting(false);
+  currentXRangeRef.current = null;
+  setCurrentXRange(null);
+}, [pointLimit]);
 
-  // Проверяем, действительно ли изменились данные в линиях
-  const currentLinesData = JSON.stringify(lines.map(l => ({
-    id: l.id,
-    dataLength: l.data?.length,
-    lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
-  })));
-  
-  if (prevLinesDataRef.current === currentLinesData) {
-    // Данные не изменились, пропускаем обновление
+// При включении автообновления сбрасываем сохранённый пользовательский зум:
+// интеракции в этом режиме заблокированы, поэтому график должен следовать за
+// данными, а не висеть в замороженном диапазоне прошлого зума. Сбрасываем и
+// сигнатуру, чтобы эффект обновления ниже сразу перефитил ось X (а не пропустил
+// тик по неизменной сигнатуре). Объявлено ДО эффекта обновления данных.
+useEffect(() => {
+  if (!isAutoUpdate) return;
+  userInteractingRef.current = false;
+  setUserInteracting(false);
+  currentXRangeRef.current = null;
+  setCurrentXRange(null);
+  prevLinesDataRef.current = null;
+}, [isAutoUpdate]);
+
+// Обновление данных графика.
+// Один инкрементальный setOption: меняем только series.data и границы осей.
+// Статичная конфигурация (оси, grid, dataZoom, tooltip) выставлена один раз
+// и здесь не пересобирается.
+useEffect(() => {
+  const inst = chartInstanceRef.current;
+  if (!inst || inst.isDisposed()) return;
+
+  // Дешёвая сигнатура изменений вместо JSON.stringify всего массива точек.
+  // pointLimit входит в сигнатуру, чтобы смена лимита сразу перерисовала
+  // уже загруженные данные, а не ждала следующего тика автообновления.
+  let sig = `lim:${pointLimit}|`;
+  for (let i = 0; i < lines.length; i++) {
+    const d = lines[i].data;
+    const len = d ? d.length : 0;
+    const last = len > 0 ? d[len - 1] : null;
+    sig += `${lines[i].id}:${len}:${last ? last.time : ''}|`;
+  }
+  if (prevLinesDataRef.current === sig) {
+    // Данные не изменились — пропускаем обновление
     return;
   }
-  prevLinesDataRef.current = currentLinesData;
+  prevLinesDataRef.current = sig;
 
-  // Форматируем данные всех линий
+  // Форматируем данные всех линий в [timeInSeconds, value] (один проход с конвертацией времени)
   const formattedLines = formatAllLinesForECharts(lines);
-  
-  // Если нет линий, пробуем использовать старый формат chartData
+
+  // Fallback на старый формат chartData
   if (formattedLines.length === 0 && chartData) {
-    const fallbackLine = {
+    formattedLines.push({
       name: 'Данные',
       color: '#1f02c3',
       data: formatLineDataForECharts(chartData)
-    };
-    formattedLines.push(fallbackLine);
-  }
-  
-  // Если все еще нет данных, выходим
-  if (formattedLines.length === 0) return;
-  
-  // Проверяем, взаимодействует ли пользователь с графиком
-  if (userInteractingRef.current) {
-  // РЕЖИМ 1: Пользователь взаимодействует - обновляем данные И ось Y
-  
-  // Вычисляем диапазон Y для текущего видимого диапазона X
-  const yRange = calculateYRange(
-    lines.length > 0 ? lines : null,
-    currentXRangeRef.current?.min || null,
-    currentXRangeRef.current?.max || null
-  );
-  
-  const updateOption = {
-    animation: false,
-    ...(!isAutoUpdate && { // ДОБАВИТЬ условие
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' }
-    }
-  }),
-    yAxis: {
-      min: yRange.min,
-      max: yRange.max
-    },
-    series: formattedLines.map(line => ({
-      animation: false,
-      data: line.data
-    }))
-  };
-  
-  if (chartInstance && typeof chartInstance.setOption === 'function') {
-    try {
-      chartInstance.setOption(updateOption, false, false);
-    } catch (error) {
-      console.error('Ошибка обновления графика:', error);
-    }
-  }
-  
-} else {
-    // РЕЖИМ 2: Пользователь НЕ взаимодействует - обновляем данные И оси
-    
-    // Собираем все временные точки из всех линий для определения диапазона X
-    const allTimePoints = [];
-    formattedLines.forEach(line => {
-      line.data.forEach(point => {
-        if (point && point[0] !== undefined) {
-          allTimePoints.push(point[0]);
-        }
-      });
     });
-    
-    const newOption = {
-      ...defaultOption,
-      animation: false,
-      tooltip: !isAutoUpdate ? {
-        trigger: 'axis',
-        axisPointer: { type: 'cross' },
-        formatter: function(params) {
-          if (!params || params.length === 0) return '';
-          
-          const timeValue = params[0].value[0];
-          const formattedTime = formatTimeOnly(timeValue);
-          
-          let tooltipContent = `Время: ${formattedTime}<br/>`;
-          
-          // Добавляем все линии в tooltip
-          params.forEach(param => {
-            const value = param.value[1];
-            const color = param.color;
-            const seriesName = param.seriesName;
-            tooltipContent += `<span style="display:inline-block;width:10px;height:10px;background-color:${color};border-radius:50%;margin-right:5px;"></span>`;
-            tooltipContent += `${seriesName}: ${parseFloat(value.toFixed(6)).toString()}<br/>`;
-          });
-          
-          return tooltipContent;
-        }
-      } : { show: false },
-      // Добавляем настройки для axisPointer на осях
-      axisPointer: {
-        link: { xAxisIndex: 'all' },
-        label: {
-          formatter: function(params) {
-            // Применяем форматирование времени только для оси X
-            if (params.axisDimension === 'x') {
-              return formatTimeOnly(params.value);
-            }
-            // Для оси Y показываем обычное числовое значение
-            return parseFloat(params.value.toFixed(6)).toString();
-          }
-        }
-      },
-      xAxis: {
-        ...defaultOption.xAxis,
-        animation: false,
-        data: allTimePoints,
-        min: function(value) {
-          const range = value.max - value.min;
-          return value.min - range * 0.1;
-        },
-        max: function(value) {
-          const range = value.max - value.min;
-          return value.max + range * 0.1;
-        },
-        axisLabel: {
-          ...defaultOption.xAxis.axisLabel,
-          interval: 'auto',
-          hideOverlap: true
-        }
-      },
-      yAxis: {
-        ...defaultOption.yAxis,
-        animation: false,
-        min: function(value) {
-          // Используем calculateYRange для определения диапазона
-          const yRange = calculateYRange(
-            lines.length > 0 ? lines : null,
-            currentXRangeRef.current?.min || null,
-            currentXRangeRef.current?.max || null
-          );
-          return yRange.min;
-        },
-        max: function(value) {
-          const yRange = calculateYRange(
-            lines.length > 0 ? lines : null,
-            currentXRangeRef.current?.min || null,
-            currentXRangeRef.current?.max || null
-          );
-          return yRange.max;
-        }
-      },
-      dataZoom: [
-    {
-      show: true,
-      type: 'inside',
-      filterMode: 'none',
-      xAxisIndex: [0],
-      zoomOnMouseWheel: true,
-      moveOnMouseMove: true,
-      moveOnMouseWheel: false,
-      preventDefaultMouseMove: true
-    }
-  ],
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '5%',
-    top: '10%',
-    containLabel: true
-  },
-      // legend: {
-      //   show: formattedLines.length > 1,  // Показываем легенду только если больше одной линии
-      //   data: formattedLines.map(line => line.name),
-      //   top: 10,
-      //   left: 'center',
-      //   textStyle: {
-      //     color: '#fff',
-      //     fontSize: 12
-      //   },
-      //   itemWidth: 25,
-      //   itemHeight: 14
-      // },
-      series: formattedLines.map(line => ({
-        name: line.name,
-        type: 'line',
-        showSymbol: false,
-        clip: true,
-        connectNulls: false,
-        animation: false,
-        itemStyle: {
-          color: line.color
-        },
-        lineStyle: {
-          color: line.color,
-          width: 2.2
-        },
-        data: line.data
-      }))
-    };
-    
-    setOption(newOption);
-    
-    if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
-    try {
-      chartInstanceRef.current.setOption(newOption, false, false); // ✅ Исправлено
-    } catch (error) {
-      console.error('Ошибка обновления графика:', error);
-    }
   }
-  }
-  // console.log(lines)
-  // console.log(chartData)
-  // console.log(activeGraphUpdate)
-  // console.log(chartInstance)
+  if (formattedLines.length === 0) return;
 
-}, [chartData, lines, activeGraphUpdate, chartInstance]);
+  // Когда пользователь взаимодействует с графиком (зум/перемещение) —
+  // сохраняем его диапазон X и считаем Y только по видимому окну.
+  const interacting = userInteractingRef.current;
+  const xRange = interacting ? currentXRangeRef.current : null;
+
+  const yRange = calcYRangeFromFormatted(
+    formattedLines,
+    xRange?.min ?? null,
+    xRange?.max ?? null
+  );
+
+  const series = formattedLines.map(line => ({
+    name: line.name,
+    type: 'line',
+    showSymbol: false,
+    clip: true,
+    connectNulls: false,
+    animation: false,
+    sampling: 'lttb',
+    itemStyle: { color: line.color },
+    lineStyle: { color: line.color, width: 2.2 },
+    data: line.data
+  }));
+
+  // Если линий стало меньше — добиваем массив пустыми сериями, чтобы при merge
+  // не остались «призрачные» линии от прошлого обновления (без replaceMerge).
+  for (let i = series.length; i < prevSeriesCountRef.current; i++) {
+    series.push({ type: 'line', data: [] });
+  }
+  prevSeriesCountRef.current = formattedLines.length;
+
+  const updateOption = {
+    yAxis: { min: yRange.min, max: yRange.max },
+    series
+  };
+
+  // В авто-режиме (без взаимодействия) ось X следует за данными.
+  if (!interacting) {
+    const xr = calcXRangeFromFormatted(formattedLines);
+    if (xr) {
+      updateOption.xAxis = { min: xr.min, max: xr.max };
+    }
+  }
+
+  try {
+    // merge (notMerge=false): меняем только data серий и границы осей,
+    // статичная конфигурация (оси, grid, dataZoom, tooltip) не пересобирается.
+    inst.setOption(updateOption, false, false);
+  } catch (error) {
+    console.error('Ошибка обновления графика:', error);
+  }
+}, [chartData, lines, activeGraphUpdate, chartInstance, pointLimit, isAutoUpdate]);
+
+  // Авто-ширина боковой колонки легенды (~28%, [220,360]px) — стартовое значение;
+  // дальше пользователь может менять её, перетаскивая разделитель.
+  const totalW = typeof width === 'number' ? width : null;
+  const defaultLegendWidth = totalW ? Math.min(360, Math.max(220, Math.round(totalW * 0.28))) : 280;
+  const [legendWidth, startLegendResize] = useResizableLegend(containerRef, totalW, defaultLegendWidth);
+
+  // Записи легенды: имя + цвет + последнее значение каждой линии.
+  let legendEntries = [];
+  if (lines && lines.length > 0) {
+    legendEntries = lines.map((line) => {
+      const d = line.data;
+      const lastValue = d && d.length > 0 ? d[d.length - 1].value : null;
+      return {
+        id: line.id,
+        name: line.name || 'Без названия',
+        color: line.color || '#1f02c3',
+        lastValue
+      };
+    });
+  } else if (chartData && Array.isArray(chartData) && chartData.length > 0) {
+    legendEntries = [{
+      id: 'data',
+      name: 'Данные',
+      color: '#1f02c3',
+      lastValue: chartData[chartData.length - 1]?.value ?? null
+    }];
+  }
 
   return (
     <div
       id="graph"
-      style={{ 
-        width: width, 
+      ref={containerRef}
+      style={{
+        width: width,
         height: height,
         position: 'relative',
-        cursor: 'grab' // Курсор "рука" для перемещения
+        display: 'flex'
       }}
     >
-      <ReactECharts
-        ref={chartRef}
-        option={option}
-        notMerge={true}
-        lazyUpdate={true}
-        autoResize
-        style={{ 
-        width: width, 
-        height: height,
-        minHeight: '300px'
-      }}
-        opts={{ 
-          renderer: 'canvas',
-          devicePixelRatio: dpr * 2  // Качество рендера при варианте canvas (можно ещё использовать svg, но она добавляет разрешения только осям)
+      <div
+        className="chart-canvas-area"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: '100%',
+          position: 'relative'
+          // Курсор — crosshair, как в легенде (задаётся в CSS через .chart-canvas-area
+          // с !important, чтобы перебить inline-курсор zrender над канвасом).
         }}
-      />
-      
-      {/* Кнопка сброса zoom - показывается только когда пользователь взаимодействовал */}
-      {userInteracting && (
-  <button
-    onClick={() => {
-      if (chartInstance && typeof chartInstance.dispatchAction === 'function') {
-        try {
-          // Сбрасываем zoom и возвращаемся к автоматическому режиму
-          chartInstance.dispatchAction({ type: 'restore' });
-          userInteractingRef.current = false;
-          // Сбрасываем сохраненный диапазон X
-          setCurrentXRange(null);
-          setUserInteracting(false);
-        } catch (error) {
-          console.error('Ошибка сброса масштаба:', error);
-        }
-      }
-    }}
+      >
+        <ReactECharts
+          ref={chartRef}
+          option={defaultOption}
+          notMerge={true}
+          lazyUpdate={true}
+          onChartReady={handleChartReady}
+          autoResize
           style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            padding: '8px 16px',
-            backgroundColor: '#4dabf7',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: '500',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            zIndex: 1000,
-            transition: 'background-color 0.2s'
+            width: '100%',
+            height: '100%',
+            minHeight: '300px'
           }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#339af0'}
-          onMouseLeave={(e) => e.target.style.backgroundColor = '#4dabf7'}
-        >
-          Сбросить масштаб
-        </button>
-      )}
+          opts={{
+            renderer: 'canvas',
+            // Суперсэмплинг как в радиальном графике: рендерим канвас в повышенной
+            // плотности пикселей → чёткие линии и подписи осей. Раньше DPR капали
+            // ради перфоманса; теперь приоритет — чёткость. Перф-буфер: sampling
+            // 'lttb' + animation:false + инкрементальный setOption. Если на слабом
+            // железе при большом лимите точек появится лаг — снизить кап до 3.
+            devicePixelRatio: Math.min(dpr * 2, 4)
+          }}
+        />
+      </div>
+
+      <div
+        className="legend-resizer nodrag"
+        onMouseDown={startLegendResize}
+        title="Потяните, чтобы изменить ширину легенды"
+      />
+
+      <div style={{ width: legendWidth, flexShrink: 0, height: '100%' }}>
+        <LinearLegend entries={legendEntries} isDark={isDark} />
+      </div>
     </div>
-    
+
   );
 };
 

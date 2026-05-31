@@ -15,7 +15,19 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
     lastUpdateTime: null
   });
   const [currentLines, setCurrentLines] = useState([]);
+  // Черновое значение интервала: применяется в updateConfig только по подтверждению.
+  const [draftInterval, setDraftInterval] = useState(String(updateConfig.interval));
   const nodeRef = useRef(null);
+
+  // Применяет введённый интервал к настройкам графика.
+  const applyUpdateSettings = useCallback(() => {
+    const interval = Math.max(1, parseInt(draftInterval, 10) || 1);
+    setDraftInterval(String(interval));
+    setUpdateConfig(prev => ({ ...prev, interval }));
+  }, [draftInterval]);
+
+  // Есть ли несохранённое изменение интервала (для подсветки кнопки подтверждения).
+  const settingsDirty = String(updateConfig.interval) !== draftInterval;
 
   // Ключ линии в общем координаторе автообновления.
   const lineKey = useCallback((lineId) => `${id}:${lineId}`, [id]);
@@ -102,6 +114,11 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
     return () => pollManager.unsubscribe(id);
   }, [id, updateConfig.isAutoUpdate]);
 
+  // При смене интервала на лету просим координатор пересчитать период таймера.
+  useEffect(() => {
+    if (updateConfig.isAutoUpdate) pollManager.refresh();
+  }, [updateConfig.interval, updateConfig.isAutoUpdate]);
+
   const toggleAutoUpdate = useCallback(() => {
     setUpdateConfig(prev => ({ ...prev, isAutoUpdate: !prev.isAutoUpdate }));
   }, []);
@@ -172,7 +189,26 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
           </span>
         </div>
         
-        <div className="chart-update-controls">
+        <div className="chart-update-controls nodrag">
+          <label className="chart-control-field" title="Интервал обновления, мс">
+            <i className="bi bi-clock-history"></i>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={draftInterval}
+              onChange={(e) => setDraftInterval(e.target.value.replace(/[^\d]/g, ''))}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+            />
+            <span className="chart-control-unit">мс</span>
+          </label>
+          <button
+            className="btn btn-sm chart-apply-btn"
+            onClick={applyUpdateSettings}
+            disabled={!settingsDirty}
+            title="Применить интервал"
+          >
+            <i className="bi bi-check-lg"></i>
+          </button>
           <button
             className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}

@@ -17,7 +17,7 @@ func main() {
         Port:     5432,
         User:     "postgres",
         Password: "123",
-        DBName:   "test",
+        DBName:   "pmu",
     }
 
     // Инициализация БД

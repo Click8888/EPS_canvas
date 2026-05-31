@@ -12,27 +12,47 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   const [isResizing, setIsResizing] = useState(false);
   const [updateConfig, setUpdateConfig] = useState({
     interval: 20,
+    pointLimit: 200,
     isAutoUpdate: false,
     lastUpdateTime: null
   });
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [yScaleMode, setYScaleMode] = useState('dynamic');
+  // Черновые значения полей: применяются в updateConfig только по подтверждению.
+  const [draftInterval, setDraftInterval] = useState(String(updateConfig.interval));
+  const [draftPointLimit, setDraftPointLimit] = useState(String(updateConfig.pointLimit));
   const nodeRef = useRef(null);
   const prevLinesDataRef = useRef(null);
+
+  // Применяет введённые интервал и лимит точек к настройкам графика.
+  const applyUpdateSettings = useCallback(() => {
+    const interval = Math.max(1, parseInt(draftInterval, 10) || 1);
+    const pointLimit = Math.max(1, parseInt(draftPointLimit, 10) || 1);
+    setDraftInterval(String(interval));
+    setDraftPointLimit(String(pointLimit));
+    setUpdateConfig(prev => ({ ...prev, interval, pointLimit }));
+  }, [draftInterval, draftPointLimit]);
+
+  // Есть ли несохранённые изменения в полях (для подсветки кнопки подтверждения).
+  const settingsDirty =
+    String(updateConfig.interval) !== draftInterval ||
+    String(updateConfig.pointLimit) !== draftPointLimit;
 
   // Ключ линии в общем координаторе автообновления.
   const lineKey = useCallback((lineId) => `${id}:${lineId}`, [id]);
 
   // Строит SQL-запросы всех настроенных линий для пакетной отправки.
+  // LIMIT берётся из настраиваемого лимита точек графика.
   const getQueries = useCallback(() => {
     if (!data.lines || data.lines.length === 0) return [];
+    const limit = updateConfig.pointLimit > 0 ? updateConfig.pointLimit : 200;
     return data.lines
       .filter(line => line.table && line.xAxis && line.yAxis)
       .map(line => ({
         key: lineKey(line.id),
-        sql: `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`
+        sql: `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT ${limit}`
       }));
-  }, [data.lines, lineKey]);
+  }, [data.lines, lineKey, updateConfig.pointLimit]);
 
   // Принимает строки из пакетного ответа и обновляет данные узла.
   const applyResults = useCallback((rowsByKey) => {
@@ -150,6 +170,12 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     return () => pollManager.unsubscribe(id);
   }, [id, updateConfig.isAutoUpdate]);
 
+  // При смене интервала на лету просим координатор пересчитать период таймера
+  // (период = минимум интервалов всех подписчиков).
+  useEffect(() => {
+    if (updateConfig.isAutoUpdate) pollManager.refresh();
+  }, [updateConfig.interval, updateConfig.isAutoUpdate]);
+
   const toggleAutoUpdate = useCallback(() => {
     const newState = !updateConfig.isAutoUpdate;
     setUpdateConfig(prev => ({ ...prev, isAutoUpdate: newState }));
@@ -230,13 +256,43 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
           </span>
         </div>
         
-        <div className="chart-update-controls">
+        <div className="chart-update-controls nodrag">
+          <label className="chart-control-field" title="Интервал обновления, мс">
+            <i className="bi bi-clock-history"></i>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={draftInterval}
+              onChange={(e) => setDraftInterval(e.target.value.replace(/[^\d]/g, ''))}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+            />
+            <span className="chart-control-unit">мс</span>
+          </label>
+          <label className="chart-control-field" title="Лимит отображаемых точек">
+            <i className="bi bi-bar-chart-steps"></i>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={draftPointLimit}
+              onChange={(e) => setDraftPointLimit(e.target.value.replace(/[^\d]/g, ''))}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+            />
+            <span className="chart-control-unit">тчк</span>
+          </label>
+          <button
+            className="btn btn-sm chart-apply-btn"
+            onClick={applyUpdateSettings}
+            disabled={!settingsDirty}
+            title="Применить интервал и лимит точек"
+          >
+            <i className="bi bi-check-lg"></i>
+          </button>
           <button
             className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}
             disabled={!dataSourceInfo && (!data.lines || data.lines.length === 0)}
-            title={(dataSourceInfo || (data.lines && data.lines.length > 0)) ? 
-              (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД") : 
+            title={(dataSourceInfo || (data.lines && data.lines.length > 0)) ?
+              (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД") :
               "Сначала выберите источник данных или добавьте линии"}
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
@@ -245,13 +301,14 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
       </div>
       
       <div className="chart-node-content nodrag">
-        <Chart 
+        <Chart
           chartData={chartData}
           lines={data.lines}
           width={nodeSize.width}
           height={nodeSize.height - 50}
           yScaleMode={yScaleMode}
           isAutoUpdate={updateConfig.isAutoUpdate}
+          pointLimit={updateConfig.pointLimit}
         />
       </div>
     </div>
