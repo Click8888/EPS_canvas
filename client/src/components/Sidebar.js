@@ -26,6 +26,9 @@ const Sidebar = ({
   const [nextLineIds, setNextLineIds] = useState({}); // { chartId: nextId }
   const [currentLines, setCurrentLines] = useState([]); // Линии текущего выбранного графика
   const [tableColumnsCache, setTableColumnsCache] = useState({});
+  // Настройки серий (общие для всех серий графика): толщина линии, размер точек.
+  const [showSeriesSettings, setShowSeriesSettings] = useState(false);
+  const [seriesStyles, setSeriesStyles] = useState({}); // { chartId: { lineWidth, symbolSize } }
 
   // Палитра цветов для линий
   const COLOR_PALETTE = [
@@ -45,6 +48,34 @@ const Sidebar = ({
     isLoadingParams: false,
     paramError: ''
   });
+
+  // Текущий стиль серий выбранного графика (общий для всех серий).
+  // Берём сохранённый стиль графика, иначе — из первой линии, иначе — дефолт.
+  const currentSeriesStyle = (selectedNode && seriesStyles[selectedNode.id]) || {
+    lineWidth: currentLines[0]?.lineWidth ?? 2.2,
+    symbolSize: currentLines[0]?.symbolSize ?? 0
+  };
+
+  // Меняет один параметр стиля и сразу применяет его КО ВСЕМ сериям графика,
+  // обновляя ноду вживую (данные серий сохраняются).
+  const updateSeriesStyle = (field, value) => {
+    if (!selectedNode) return;
+    const chartId = selectedNode.id;
+    const newStyle = { ...currentSeriesStyle, [field]: value };
+    setSeriesStyles(prev => ({ ...prev, [chartId]: newStyle }));
+
+    const baseLines = chartLines[chartId] || currentLines;
+    const updatedLines = baseLines.map(line => ({
+      ...line,
+      lineWidth: newStyle.lineWidth,
+      symbolSize: newStyle.symbolSize
+    }));
+    setChartLines(prev => ({ ...prev, [chartId]: updatedLines }));
+    setCurrentLines(updatedLines);
+    if (window.updateNodeData) {
+      window.updateNodeData(chartId, { lines: updatedLines, timestamp: Date.now() });
+    }
+  };
 
    // Функция загрузки таблиц из БД
   const loadTables = useCallback(async () => {
@@ -151,6 +182,8 @@ const Sidebar = ({
     xAxis: '',
     yAxis: '',
     color: getRandomColor(),
+    lineWidth: currentSeriesStyle.lineWidth,
+    symbolSize: currentSeriesStyle.symbolSize,
     data: []
   };
   
@@ -711,8 +744,8 @@ const loadRadialLineData = async (line) => {
                   Управление
                 </h6>
                 <div className="management-buttons">
-                  <button 
-                    className="btn btn-danger btn-sm w-100 mb-2"
+                  <button
+                    className="btn btn-outline-danger btn-sm w-100 mb-2"
                     onClick={onDeleteSelectedNode}
                     disabled={!selectedNode}
                     title={!selectedNode ? "Выберите узел для удаления" : "Удалить выбранный узел"}
@@ -720,8 +753,8 @@ const loadRadialLineData = async (line) => {
                     <i className="bi bi-trash"></i> Удалить узел
                   </button>
                   <div className="btn-group w-100" role="group">
-                    <button 
-                      className="btn btn-warning btn-sm"
+                    <button
+                      className="btn btn-outline-warning btn-sm"
                       onClick={onResetGraph}
                     >
                       <i className="bi bi-arrow-clockwise"></i> Сброс
@@ -739,29 +772,86 @@ const loadRadialLineData = async (line) => {
                   </h6>
                   <div className="selected-node-info">
                     <div className="selected-node-header">
-                      <span className="badge bg-primary">
-                          {selectedNode.type === 'linearChartNode' && 'Линейный график'}
-                          {selectedNode.type === 'radialChartNode' && 'Радиальный график'}
-                          {selectedNode.type === 'dataSourceNode' && 'Источник'}
-                          {selectedNode.type === 'processorNode' && 'Обработчик'}
+                      <span className="selected-node-name" title={selectedNode.data.label}>
+                        {selectedNode.data.label}
                       </span>
-                      <span className="ms-2">{selectedNode.data.label}</span>
+                      <span className="selected-node-type">
+                        <i className={`bi me-1 ${
+                          selectedNode.type === 'linearChartNode' ? 'bi-graph-up' :
+                          selectedNode.type === 'radialChartNode' ? 'bi-radar' :
+                          selectedNode.type === 'dataSourceNode' ? 'bi-database' :
+                          'bi-gear'
+                        }`}></i>
+                        {selectedNode.type === 'linearChartNode' && 'Линейный график'}
+                        {selectedNode.type === 'radialChartNode' && 'Радиальный график'}
+                        {selectedNode.type === 'dataSourceNode' && 'Источник данных'}
+                        {selectedNode.type === 'processorNode' && 'Обработчик'}
+                      </span>
                     </div>
                     <div className="selected-node-details">
+                      <hr className="series-divider" />
+                      <div className="series-section-title">
+                        <i className="bi bi-collection me-1"></i>
+                        Взаимодействие с сериями
+                      </div>
+                      <div className="series-actions">
+                        <button
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={addLine}
+                          disabled={chartParams.isLoadingParams}
+                          title="Добавить серию"
+                        >
+                          <i className="bi bi-plus-circle me-1"></i>
+                          Добавить
+                        </button>
+                        <button
+                          className={`btn btn-sm btn-outline-secondary${showSeriesSettings ? ' active' : ''}`}
+                          onClick={() => setShowSeriesSettings(v => !v)}
+                          title="Настройки серий"
+                        >
+                          <i className="bi bi-sliders me-1"></i>
+                          Настройки
+                        </button>
+                      </div>
+
+                      {showSeriesSettings && (
+                        <div className="series-settings">
+                          <div className="series-setting-row">
+                            <label className="mb-0">Толщина линии</label>
+                            <span className="series-setting-value">{currentSeriesStyle.lineWidth}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="8"
+                            step="0.5"
+                            value={currentSeriesStyle.lineWidth}
+                            onChange={(e) => updateSeriesStyle('lineWidth', parseFloat(e.target.value))}
+                          />
+                          {selectedNode.type === 'linearChartNode' && (
+                            <>
+                              <div className="series-setting-row">
+                                <label className="mb-0">Размер точек</label>
+                                <span className="series-setting-value">
+                                  {currentSeriesStyle.symbolSize > 0 ? currentSeriesStyle.symbolSize : 'выкл'}
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="20"
+                                step="1"
+                                value={currentSeriesStyle.symbolSize}
+                                onChange={(e) => updateSeriesStyle('symbolSize', parseInt(e.target.value, 10))}
+                              />
+                            </>
+                          )}
+                          <div className="series-settings-hint">Применяется ко всем сериям</div>
+                        </div>
+                      )}
+
                       {/* Блок управления линиями графика */}
                       <div className="chart-lines-manager mt-3">
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <button
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={addLine}
-                            disabled={chartParams.isLoadingParams}
-                            title="Добавить новую линию"
-                          >
-                            <i className="bi bi-plus-circle me-1"></i>
-                            Добавить серию
-                          </button>
-                        </div>
-                        
                         {chartParams.paramError && (
                           <div className="alert alert-danger alert-dismissible fade show py-1 px-2 mb-2" style={{ fontSize: '12px' }}>
                             <i className="bi bi-exclamation-triangle me-1"></i>
@@ -927,7 +1017,7 @@ const loadRadialLineData = async (line) => {
                         {currentLines.length > 0 && (
                           <div className="d-grid gap-2 mt-3">
                             <button
-                              className="btn btn-primary btn-sm"
+                              className="btn btn-outline-success btn-sm"
                               onClick={applyAllLines}
                               disabled={chartParams.isLoadingParams || currentLines.length === 0}
                             >

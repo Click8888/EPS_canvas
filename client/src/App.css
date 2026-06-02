@@ -15,6 +15,19 @@
   --radial-grid: #e0e0e0;
   --radial-text: #333333;
   --radial-border: #4dabf7;
+
+  /* Сайдбар — светлая тема (бело-серая палитра, нейтральные акценты) */
+  --sidebar-bg: #eef2f7;
+  --sidebar-header-bg: #e3e9f2;
+  --sidebar-border: #d3dbe6;
+  --sidebar-text: #1f2a37;
+  --sidebar-text-muted: #64748b;
+  --sidebar-surface: #ffffff;
+  --sidebar-accent: #5b6675;
+  --sidebar-stat: #475569;
+  --sidebar-stat-bg: rgba(15, 23, 42, 0.06);
+  --sidebar-selected-bg: #f1f4f8;
+  --sidebar-selected-border: #d3dbe6;
 }
 
 [data-theme="dark"] {
@@ -28,6 +41,19 @@
   --hover-bg: rgba(255, 255, 255, 0.1);
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   --accent-color: #888;
+
+  /* Сайдбар — тёмная тема (текущая палитра) */
+  --sidebar-bg: #1e1e1e;
+  --sidebar-header-bg: rgba(0, 0, 0, 0.2);
+  --sidebar-border: #4a5568;
+  --sidebar-text: #e2e8f0;
+  --sidebar-text-muted: #a0aec0;
+  --sidebar-surface: rgba(45, 55, 72, 0.5);
+  --sidebar-accent: #63b3ed;
+  --sidebar-stat: #68d391;
+  --sidebar-stat-bg: rgba(104, 211, 145, 0.1);
+  --sidebar-selected-bg: rgba(66, 153, 225, 0.1);
+  --sidebar-selected-border: #4299e1;
 }
 
 

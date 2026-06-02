@@ -278,8 +278,8 @@ const defaultOption = {
     animation: false,
     axisLabel: {
       formatter: function(value) {
-        // Форматируем как обычное число с 1 знаком после запятой
-        return value.toFixed(1);
+        // Всегда 6 значащих цифр (6 знаков в целом, а не после запятой)
+        return Number(value).toPrecision(6);
       }
     },
     minorTick: {
@@ -400,7 +400,7 @@ const LinearLegend = ({ entries, isDark }) => {
         fontSize: '13px'
       }}>
         <i className="bi bi-graph-up" style={{ fontSize: '14px' }}></i>
-        <span>Линии</span>
+        <span>Серии</span>
         <span style={{
           marginLeft: 'auto',
           fontSize: '11px',
@@ -531,6 +531,8 @@ const formatAllLinesForECharts = (lines) => {
   return lines.map(line => ({
     name: line.name || 'Без названия',
     color: line.color || '#1f02c3',
+    lineWidth: line.lineWidth,
+    symbolSize: line.symbolSize,
     data: formatLineDataForECharts(line.data || [])
   }));
 };
@@ -776,7 +778,9 @@ useEffect(() => {
     const d = lines[i].data;
     const len = d ? d.length : 0;
     const last = len > 0 ? d[len - 1] : null;
-    sig += `${lines[i].id}:${len}:${last ? last.time : ''}|`;
+    // lineWidth/symbolSize в сигнатуре — чтобы смена стиля серий сразу
+    // перерисовала график, а не ждала изменения данных.
+    sig += `${lines[i].id}:${len}:${last ? last.time : ''}:${lines[i].lineWidth}:${lines[i].symbolSize}|`;
   }
   if (prevLinesDataRef.current === sig) {
     // Данные не изменились — пропускаем обновление
@@ -808,18 +812,25 @@ useEffect(() => {
     xRange?.max ?? null
   );
 
-  const series = formattedLines.map(line => ({
-    name: line.name,
-    type: 'line',
-    showSymbol: false,
-    clip: true,
-    connectNulls: false,
-    animation: false,
-    sampling: 'lttb',
-    itemStyle: { color: line.color },
-    lineStyle: { color: line.color, width: 2.2 },
-    data: line.data
-  }));
+  const series = formattedLines.map(line => {
+    // Настраиваемые стили серий (общие для всех серий, задаются в сайдбаре).
+    const width = line.lineWidth ?? 2.2;
+    const symbolSize = line.symbolSize ?? 0;
+    const showSymbol = symbolSize > 0;
+    return {
+      name: line.name,
+      type: 'line',
+      showSymbol,
+      symbolSize: showSymbol ? symbolSize : 4,
+      clip: true,
+      connectNulls: false,
+      animation: false,
+      sampling: 'lttb',
+      itemStyle: { color: line.color },
+      lineStyle: { color: line.color, width },
+      data: line.data
+    };
+  });
 
   // Если линий стало меньше — добиваем массив пустыми сериями, чтобы при merge
   // не остались «призрачные» линии от прошлого обновления (без replaceMerge).

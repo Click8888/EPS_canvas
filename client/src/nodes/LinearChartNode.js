@@ -277,7 +277,7 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
               onChange={(e) => setDraftPointLimit(e.target.value.replace(/[^\d]/g, ''))}
               onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
             />
-            <span className="chart-control-unit">тчк</span>
+            <span className="chart-control-unit">точ</span>
           </label>
           <button
             className="btn btn-sm chart-apply-btn"
