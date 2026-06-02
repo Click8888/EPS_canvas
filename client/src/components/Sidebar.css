@@ -209,6 +209,72 @@
   color: var(--sidebar-text-muted);
 }
 
+/* ===== Взаимодействие с сериями ===== */
+.series-divider {
+  border: 0;
+  border-top: 1px solid var(--sidebar-border);
+  margin: 0.75rem 0;
+  opacity: 1;
+}
+
+.series-section-title {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sidebar-text);
+  margin-bottom: 0.5rem;
+}
+
+.series-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.series-actions .btn {
+  flex: 1;
+}
+
+.series-settings {
+  background: var(--hover-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.series-setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  color: var(--sidebar-text-muted);
+  margin-bottom: 0.15rem;
+}
+
+.series-setting-value {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: var(--sidebar-text);
+}
+
+.series-settings input[type="range"] {
+  width: 100%;
+  margin-bottom: 0.6rem;
+  accent-color: var(--sidebar-accent);
+}
+
+.series-settings input[type="range"]:last-of-type {
+  margin-bottom: 0.4rem;
+}
+
+.series-settings-hint {
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--sidebar-text-muted);
+}
+
 .selected-node-details {
   font-size: 0.85rem;
 }

@@ -462,6 +462,11 @@ const Chart = ({
   height = '600px',
   isAutoUpdate = false,
   pointLimit = 200,
+  // Режим выбора окна и границы абсолютного диапазона (epoch-секунды).
+  // 'points'/'relative' — ось X тянется за данными; 'absolute' — фиксируем [start, end].
+  rangeMode = 'points',
+  rangeStartSec = null,
+  rangeEndSec = null,
 }) => {
   const { isDark } = useTheme();
   const chartRef = useRef(null);
@@ -483,8 +488,10 @@ const Chart = ({
 const formatLineDataForECharts = (data) => {
   if (!data || !Array.isArray(data)) return [];
 
-  // Ограничиваем отображение последними pointLimit точками (настраивается per-график)
-  const limit = pointLimit > 0 ? pointLimit : data.length;
+  // Ограничиваем отображение последними pointLimit точками — только в режиме точек.
+  // В режимах диапазона окно по времени само задаёт выборку, и резать по числу
+  // точек нельзя (иначе вместо всего окна показались бы только последние N точек).
+  const limit = (rangeMode === 'points' && pointLimit > 0) ? pointLimit : data.length;
   const limitedData = data.length > limit ? data.slice(-limit) : data;
   const formattedData = [];
 
@@ -746,7 +753,7 @@ useEffect(() => {
   setUserInteracting(false);
   currentXRangeRef.current = null;
   setCurrentXRange(null);
-}, [pointLimit]);
+}, [pointLimit, rangeMode, rangeStartSec, rangeEndSec]);
 
 // При включении автообновления сбрасываем сохранённый пользовательский зум:
 // интеракции в этом режиме заблокированы, поэтому график должен следовать за
@@ -771,9 +778,9 @@ useEffect(() => {
   if (!inst || inst.isDisposed()) return;
 
   // Дешёвая сигнатура изменений вместо JSON.stringify всего массива точек.
-  // pointLimit входит в сигнатуру, чтобы смена лимита сразу перерисовала
-  // уже загруженные данные, а не ждала следующего тика автообновления.
-  let sig = `lim:${pointLimit}|`;
+  // pointLimit и параметры диапазона входят в сигнатуру, чтобы смена режима/окна
+  // сразу перерисовала уже загруженные данные, а не ждала следующего тика автообновления.
+  let sig = `lim:${pointLimit}|rm:${rangeMode}|rs:${rangeStartSec}|re:${rangeEndSec}|`;
   for (let i = 0; i < lines.length; i++) {
     const d = lines[i].data;
     const len = d ? d.length : 0;
@@ -804,7 +811,15 @@ useEffect(() => {
   // Когда пользователь взаимодействует с графиком (зум/перемещение) —
   // сохраняем его диапазон X и считаем Y только по видимому окну.
   const interacting = userInteractingRef.current;
-  const xRange = interacting ? currentXRangeRef.current : null;
+  // Абсолютный режим с заданными границами: фиксируем окно [start, end] и
+  // считаем Y по нему (а не по всем данным), пока пользователь не зумит сам.
+  const absoluteWindow =
+    rangeMode === 'absolute' && rangeStartSec != null && rangeEndSec != null
+      ? { min: rangeStartSec, max: rangeEndSec }
+      : null;
+  const xRange = interacting
+    ? currentXRangeRef.current
+    : absoluteWindow;
 
   const yRange = calcYRangeFromFormatted(
     formattedLines,
@@ -844,11 +859,17 @@ useEffect(() => {
     series
   };
 
-  // В авто-режиме (без взаимодействия) ось X следует за данными.
+  // Без взаимодействия пользователя задаём ось X. В абсолютном режиме —
+  // фиксированное окно [start, end] (показываем весь диапазон даже при
+  // разреженных данных); иначе ось следует за данными.
   if (!interacting) {
-    const xr = calcXRangeFromFormatted(formattedLines);
-    if (xr) {
-      updateOption.xAxis = { min: xr.min, max: xr.max };
+    if (absoluteWindow) {
+      updateOption.xAxis = { min: absoluteWindow.min, max: absoluteWindow.max };
+    } else {
+      const xr = calcXRangeFromFormatted(formattedLines);
+      if (xr) {
+        updateOption.xAxis = { min: xr.min, max: xr.max };
+      }
     }
   }
 
@@ -859,7 +880,7 @@ useEffect(() => {
   } catch (error) {
     console.error('Ошибка обновления графика:', error);
   }
-}, [chartData, lines, activeGraphUpdate, chartInstance, pointLimit, isAutoUpdate]);
+}, [chartData, lines, activeGraphUpdate, chartInstance, pointLimit, isAutoUpdate, rangeMode, rangeStartSec, rangeEndSec]);
 
   // Авто-ширина боковой колонки легенды (~28%, [220,360]px) — стартовое значение;
   // дальше пользователь может менять её, перетаскивая разделитель.

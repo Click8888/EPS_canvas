@@ -242,6 +242,7 @@ const RadialChart = ({
           color: line.color || '#4dabf7', // Сохраняем пользовательский цвет
           angle: angle % 360,
           magnitude: Math.abs(magnitude),
+          lineWidth: line.lineWidth, // Настраиваемая толщина стрелки (из сайдбара)
         });
       }
     });
@@ -397,12 +398,12 @@ const RadialChart = ({
                 },
                 style: {
                   stroke: color,
-                  lineWidth: isHighDPI ? 2.5 : 3,
+                  lineWidth: vector.lineWidth ?? (isHighDPI ? 2.5 : 3),
                   opacity: 0.9
                 },
                 emphasis: {
                   style: {
-                    lineWidth: isHighDPI ? 4 : 5,
+                    lineWidth: (vector.lineWidth ?? (isHighDPI ? 2.5 : 3)) + 1.5,
                     opacity: 1,
                     shadowBlur: isHighDPI ? 4 : 8,
                     shadowColor: color

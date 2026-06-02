@@ -168,6 +168,29 @@ body.resizing-legend * {
   border-color: #4dabf7;
 }
 
+/* Поля даты-времени для абсолютного диапазона — авто-ширина (не фикс. 56px) */
+.chart-control-field input[type="datetime-local"] {
+  width: auto;
+  text-align: left;
+  font-size: 11px;
+}
+
+/* Селекторы режима окна и единиц относительного окна */
+.chart-mode-select {
+  padding: 1px 4px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chart-mode-select:focus {
+  outline: none;
+  border-color: #4dabf7;
+}
+
 .chart-control-unit {
   color: var(--text-secondary);
   font-size: 10px;

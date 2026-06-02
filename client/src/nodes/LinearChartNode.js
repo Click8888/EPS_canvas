@@ -14,45 +14,115 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     interval: 20,
     pointLimit: 200,
     isAutoUpdate: false,
-    lastUpdateTime: null
+    lastUpdateTime: null,
+    // Режим выбора окна данных:
+    // 'points'   — последние N точек (LIMIT), ось X тянется за данными;
+    // 'absolute' — фиксированное окно [rangeStart, rangeEnd] (WHERE BETWEEN);
+    // 'relative' — последние N сек/мин/час, окно «едет» за NOW() (WHERE >= NOW()-INTERVAL).
+    rangeMode: 'points',
+    rangeStart: '',          // datetime-local строка для absolute
+    rangeEnd: '',
+    relativeValue: 60,       // число для relative
+    relativeUnit: 'seconds'  // 'seconds' | 'minutes' | 'hours'
   });
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [yScaleMode, setYScaleMode] = useState('dynamic');
   // Черновые значения полей: применяются в updateConfig только по подтверждению.
   const [draftInterval, setDraftInterval] = useState(String(updateConfig.interval));
   const [draftPointLimit, setDraftPointLimit] = useState(String(updateConfig.pointLimit));
+  const [draftRangeMode, setDraftRangeMode] = useState(updateConfig.rangeMode);
+  const [draftRangeStart, setDraftRangeStart] = useState(updateConfig.rangeStart);
+  const [draftRangeEnd, setDraftRangeEnd] = useState(updateConfig.rangeEnd);
+  const [draftRelativeValue, setDraftRelativeValue] = useState(String(updateConfig.relativeValue));
+  const [draftRelativeUnit, setDraftRelativeUnit] = useState(updateConfig.relativeUnit);
   const nodeRef = useRef(null);
   const prevLinesDataRef = useRef(null);
 
-  // Применяет введённые интервал и лимит точек к настройкам графика.
+  // Применяет введённые интервал, лимит точек и параметры диапазона к настройкам графика.
   const applyUpdateSettings = useCallback(() => {
     const interval = Math.max(1, parseInt(draftInterval, 10) || 1);
     const pointLimit = Math.max(1, parseInt(draftPointLimit, 10) || 1);
+    const relativeValue = Math.max(1, parseInt(draftRelativeValue, 10) || 1);
     setDraftInterval(String(interval));
     setDraftPointLimit(String(pointLimit));
-    setUpdateConfig(prev => ({ ...prev, interval, pointLimit }));
-  }, [draftInterval, draftPointLimit]);
+    setDraftRelativeValue(String(relativeValue));
+    setUpdateConfig(prev => ({
+      ...prev,
+      interval,
+      pointLimit,
+      rangeMode: draftRangeMode,
+      rangeStart: draftRangeStart,
+      rangeEnd: draftRangeEnd,
+      relativeValue,
+      relativeUnit: draftRelativeUnit
+    }));
+  }, [draftInterval, draftPointLimit, draftRangeMode, draftRangeStart, draftRangeEnd, draftRelativeValue, draftRelativeUnit]);
 
   // Есть ли несохранённые изменения в полях (для подсветки кнопки подтверждения).
   const settingsDirty =
     String(updateConfig.interval) !== draftInterval ||
-    String(updateConfig.pointLimit) !== draftPointLimit;
+    String(updateConfig.pointLimit) !== draftPointLimit ||
+    updateConfig.rangeMode !== draftRangeMode ||
+    updateConfig.rangeStart !== draftRangeStart ||
+    updateConfig.rangeEnd !== draftRangeEnd ||
+    String(updateConfig.relativeValue) !== draftRelativeValue ||
+    updateConfig.relativeUnit !== draftRelativeUnit;
 
   // Ключ линии в общем координаторе автообновления.
   const lineKey = useCallback((lineId) => `${id}:${lineId}`, [id]);
 
   // Строит SQL-запросы всех настроенных линий для пакетной отправки.
-  // LIMIT берётся из настраиваемого лимита точек графика.
+  // LIMIT берётся из настраиваемого лимита точек графика; в режимах диапазона
+  // он работает как потолок числа точек, а WHERE ограничивает окно по времени.
   const getQueries = useCallback(() => {
     if (!data.lines || data.lines.length === 0) return [];
     const limit = updateConfig.pointLimit > 0 ? updateConfig.pointLimit : 200;
+    const { rangeMode, rangeStart, rangeEnd, relativeValue, relativeUnit } = updateConfig;
+
+    // Приводим datetime-local ('YYYY-MM-DDTHH:MM[:SS]') к wall-clock 'YYYY-MM-DD HH:MM:SS'
+    // для подстановки в SQL (а не подставляем сырой ввод).
+    const toSqlTimestamp = (s) => {
+      if (!s) return null;
+      let v = String(s).replace('T', ' ').trim();
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) v += ':00';
+      return v;
+    };
+
+    // WHERE-условие по выбранному режиму. xAxis — имя колонки времени линии.
+    const buildWhere = (xAxis) => {
+      if (rangeMode === 'absolute') {
+        const start = toSqlTimestamp(rangeStart);
+        const end = toSqlTimestamp(rangeEnd);
+        if (!start || !end) return null; // диапазон не задан — линию не запрашиваем
+        return `WHERE ${xAxis} BETWEEN '${start}' AND '${end}'`;
+      }
+      if (rangeMode === 'relative') {
+        const value = Math.max(1, parseInt(relativeValue, 10) || 1);
+        const unit = ['seconds', 'minutes', 'hours'].includes(relativeUnit) ? relativeUnit : 'seconds';
+        return `WHERE ${xAxis} >= NOW() - INTERVAL '${value} ${unit}'`;
+      }
+      return '';
+    };
+
+    // В режимах диапазона выборку ограничивает само окно по времени (WHERE),
+    // поэтому LIMIT не ставим — иначе вернулись бы только последние N точек
+    // внутри окна, а не весь заданный диапазон. LIMIT нужен лишь в режиме точек.
+    const tail = rangeMode === 'points'
+      ? `ORDER BY 1 DESC LIMIT ${limit}`
+      : `ORDER BY 1 ASC`;
+
     return data.lines
       .filter(line => line.table && line.xAxis && line.yAxis)
-      .map(line => ({
-        key: lineKey(line.id),
-        sql: `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT ${limit}`
-      }));
-  }, [data.lines, lineKey, updateConfig.pointLimit]);
+      .map(line => {
+        const where = buildWhere(line.xAxis);
+        if (where === null) return null; // absolute без заданного окна
+        return {
+          key: lineKey(line.id),
+          sql: `SELECT * FROM ${line.table} ${where} ${tail}`.replace(/\s+/g, ' ').trim()
+        };
+      })
+      .filter(Boolean);
+  }, [data.lines, lineKey, updateConfig]);
 
   // Принимает строки из пакетного ответа и обновляет данные узла.
   const applyResults = useCallback((rowsByKey) => {
@@ -204,6 +274,19 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     e.stopPropagation();
   };
 
+  // Границы абсолютного окна в epoch-секундах для оси X графика. Считаем так же,
+  // как applyResults считает time точек (Date.getTime()/1000), чтобы оси и данные
+  // были в одной системе координат. Для остальных режимов — null (ось тянется за данными).
+  const absoluteRangeSec = (() => {
+    if (updateConfig.rangeMode !== 'absolute') return { start: null, end: null };
+    const s = updateConfig.rangeStart ? new Date(updateConfig.rangeStart).getTime() : NaN;
+    const e = updateConfig.rangeEnd ? new Date(updateConfig.rangeEnd).getTime() : NaN;
+    return {
+      start: isNaN(s) ? null : s / 1000,
+      end: isNaN(e) ? null : e / 1000
+    };
+  })();
+
   return (
     <div 
       ref={nodeRef}
@@ -257,6 +340,18 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
         </div>
         
         <div className="chart-update-controls nodrag">
+          <label className="chart-control-field" title="Режим выбора окна данных">
+            <i className="bi bi-clock"></i>
+            <select
+              className="chart-mode-select"
+              value={draftRangeMode}
+              onChange={(e) => setDraftRangeMode(e.target.value)}
+            >
+              <option value="points">Последние точки</option>
+              <option value="absolute">Диапазон (с–по)</option>
+              <option value="relative">Последние N</option>
+            </select>
+          </label>
           <label className="chart-control-field" title="Интервал обновления, мс">
             <i className="bi bi-clock-history"></i>
             <input
@@ -268,22 +363,69 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
             />
             <span className="chart-control-unit">мс</span>
           </label>
-          <label className="chart-control-field" title="Лимит отображаемых точек">
-            <i className="bi bi-bar-chart-steps"></i>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={draftPointLimit}
-              onChange={(e) => setDraftPointLimit(e.target.value.replace(/[^\d]/g, ''))}
-              onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
-            />
-            <span className="chart-control-unit">точ</span>
-          </label>
+          {draftRangeMode === 'points' && (
+            <label className="chart-control-field" title="Лимит отображаемых точек">
+              <i className="bi bi-bar-chart-steps"></i>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={draftPointLimit}
+                onChange={(e) => setDraftPointLimit(e.target.value.replace(/[^\d]/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+              />
+              <span className="chart-control-unit">точ</span>
+            </label>
+          )}
+          {draftRangeMode === 'absolute' && (
+            <>
+              <label className="chart-control-field" title="Начало диапазона">
+                <span className="chart-control-unit">с</span>
+                <input
+                  type="datetime-local"
+                  step="1"
+                  value={draftRangeStart}
+                  onChange={(e) => setDraftRangeStart(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+                />
+              </label>
+              <label className="chart-control-field" title="Конец диапазона">
+                <span className="chart-control-unit">по</span>
+                <input
+                  type="datetime-local"
+                  step="1"
+                  value={draftRangeEnd}
+                  onChange={(e) => setDraftRangeEnd(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+                />
+              </label>
+            </>
+          )}
+          {draftRangeMode === 'relative' && (
+            <label className="chart-control-field" title="Длина окна (последние N единиц времени)">
+              <i className="bi bi-hourglass-split"></i>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={draftRelativeValue}
+                onChange={(e) => setDraftRelativeValue(e.target.value.replace(/[^\d]/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+              />
+              <select
+                className="chart-mode-select"
+                value={draftRelativeUnit}
+                onChange={(e) => setDraftRelativeUnit(e.target.value)}
+              >
+                <option value="seconds">сек</option>
+                <option value="minutes">мин</option>
+                <option value="hours">час</option>
+              </select>
+            </label>
+          )}
           <button
             className="btn btn-sm chart-apply-btn"
             onClick={applyUpdateSettings}
             disabled={!settingsDirty}
-            title="Применить интервал и лимит точек"
+            title="Применить настройки обновления и диапазона"
           >
             <i className="bi bi-check-lg"></i>
           </button>
@@ -309,6 +451,9 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
           yScaleMode={yScaleMode}
           isAutoUpdate={updateConfig.isAutoUpdate}
           pointLimit={updateConfig.pointLimit}
+          rangeMode={updateConfig.rangeMode}
+          rangeStartSec={absoluteRangeSec.start}
+          rangeEndSec={absoluteRangeSec.end}
         />
       </div>
     </div>
