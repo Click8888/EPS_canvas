@@ -1,16 +1,20 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './Sidebar.css';
+import { loadLineData, loadRadialLineData } from '../services/chartData';
+import { parseConfigFile } from '../services/canvasConfig';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 
-const Sidebar = ({ 
-  width = 300, 
+const Sidebar = ({
+  width = 300,
   minWidth = 20,
   maxWidth = 600,
   onAddChartNode,
   onAddRadialChartNode,
   onDeleteSelectedNode,
   onResetGraph,
+  onExportCanvas,
+  onImportConfig,
   selectedNode
 }) => {
   const [sidebarWidth, setSidebarWidth] = useState(width);
@@ -20,6 +24,7 @@ const Sidebar = ({
   const sidebarRef = useRef(null);
   const resizeTimeoutRef = useRef(null);
   const lastUpdateTimeRef = useRef(Date.now());
+  const fileInputRef = useRef(null);
   const collapseThreshold = 80;
 
   const [chartLines, setChartLines] = useState({}); // { chartId: [lines] }
@@ -110,30 +115,39 @@ const Sidebar = ({
   useEffect(() => {
     if (selectedNode && (selectedNode.type === 'linearChartNode' || selectedNode.type === 'radialChartNode')) {
       const chartId = selectedNode.id;
-      
-      // Если у графика еще нет линий, создаем одну линию по умолчанию
+
+      // Если в локальном стейте панели ещё нет линий этого графика —
+      // пересеваем их из node.data.lines (актуально после импорта конфигурации
+      // полотна), иначе создаём одну линию по умолчанию.
       if (!chartLines[chartId]) {
-        const defaultLine = {
-          id: `line-1`,
-          name: `Линия 1`,
-          table: '',
-          xAxis: '',
-          yAxis: '',
-          color: getRandomColor(),
-          data: []
-        };
-        
-        setChartLines(prev => ({
-          ...prev,
-          [chartId]: [defaultLine]
-        }));
-        
-        setNextLineIds(prev => ({
-          ...prev,
-          [chartId]: 2
-        }));
-        
-        setCurrentLines([defaultLine]);
+        const savedLines = selectedNode.data?.lines;
+        if (Array.isArray(savedLines) && savedLines.length > 0) {
+          // Берём конфигурацию линий без тяжёлых данных точек.
+          const seededLines = savedLines.map(({ data, ...rest }) => ({ ...rest, data: [] }));
+          // nextLineId — максимум числовых суффиксов id (line-N) + 1.
+          const maxLineNum = seededLines.reduce((max, l) => {
+            const num = parseInt(String(l.id).split('-')[1], 10);
+            return Number.isFinite(num) && num > max ? num : max;
+          }, 0);
+
+          setChartLines(prev => ({ ...prev, [chartId]: seededLines }));
+          setNextLineIds(prev => ({ ...prev, [chartId]: maxLineNum + 1 }));
+          setCurrentLines(seededLines);
+        } else {
+          const defaultLine = {
+            id: `line-1`,
+            name: `Линия 1`,
+            table: '',
+            xAxis: '',
+            yAxis: '',
+            color: getRandomColor(),
+            data: []
+          };
+
+          setChartLines(prev => ({ ...prev, [chartId]: [defaultLine] }));
+          setNextLineIds(prev => ({ ...prev, [chartId]: 2 }));
+          setCurrentLines([defaultLine]);
+        }
       } else {
         // Загружаем существующие линии этого графика
         setCurrentLines(chartLines[chartId]);
@@ -142,6 +156,19 @@ const Sidebar = ({
       setCurrentLines([]);
     }
   }, [selectedNode, chartLines]);
+
+  // Обработка выбора файла конфигурации полотна для импорта.
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // сбрасываем, чтобы можно было выбрать тот же файл повторно
+    if (!file) return;
+    try {
+      const config = await parseConfigFile(file);
+      onImportConfig?.(config);
+    } catch (err) {
+      window.alert(err.message || 'Не удалось загрузить конфигурацию');
+    }
+  };
 
   // Загрузка таблиц при монтировании компонента и при смене БД
   useEffect(() => {
@@ -332,130 +359,8 @@ const Sidebar = ({
     }
   };
 
-  // Загрузить данные для конкретной линии
-  const loadLineData = async (line) => {
-    if (!line.table || !line.xAxis || !line.yAxis) {
-      return null;
-    }
-    
-    try {
-      const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
-      
-      const response = await fetch(`${API_BASE_URL}/execute-query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql })
-      });
-
-      if (!response.ok) throw new Error('Ошибка загрузки данных');
-      
-      const result = await response.json();
-      const data = result.data || result;
-      
-      // Форматируем данные для графика
-      const formattedData = data
-        .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
-        .map((row) => {
-          const yValue = parseFloat(row[line.yAxis]);
-          const xValue = row[line.xAxis];
-          
-          let timeValue;
-          if (xValue instanceof Date) {
-            timeValue = xValue.getTime() / 1000;
-          } else if (typeof xValue === 'string') {
-            const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
-            if (fullDateMatch) {
-              const date = new Date(xValue);
-              if (!isNaN(date.getTime())) {
-                timeValue = date.getTime() / 1000;
-              } else {
-                timeValue = parseFloat(xValue) || 0;
-              }
-            } else {
-              const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
-              if (timeMatch) {
-                const hours = parseInt(timeMatch[1]) || 0;
-                const minutes = parseInt(timeMatch[2]) || 0;
-                const seconds = parseInt(timeMatch[3]) || 0;
-                let milliseconds = 0;
-                if (timeMatch[4]) {
-                  const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
-                  milliseconds = parseInt(msString, 10);
-                }
-                timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-              } else {
-                timeValue = parseFloat(xValue) || 0;
-              }
-            }
-          } else {
-            timeValue = parseFloat(xValue) || 0;
-          }
-          
-          return {
-            time: timeValue,
-            value: isNaN(yValue) ? 0 : yValue,
-            originalTime: xValue,
-            originalValue: row[line.yAxis],
-            seriesId: line.id,
-            timestamp: Date.now()
-          };
-        });
-      
-      // Сортируем по времени
-      formattedData.sort((a, b) => a.time - b.time);
-      
-      return formattedData;
-      
-    } catch (err) {
-      console.error(`Ошибка загрузки данных для линии ${line.id}:`, err);
-      return null;
-    }
-  };
-
-  // Загрузить данные для линии радиального графика (угол + длина)
-const loadRadialLineData = async (line) => {
-  if (!line.table || !line.angleAxis || !line.magnitudeAxis) {
-    return null;
-  }
-  
-  try {
-    const sql = `SELECT * FROM ${line.table} ORDER BY 1 DESC LIMIT 200`;
-    
-    const response = await fetch(`${API_BASE_URL}/execute-query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql })
-    });
-
-    if (!response.ok) throw new Error('Ошибка загрузки данных');
-    
-    const result = await response.json();
-    const data = result.data || result;
-    
-    // Форматируем данные для полярного графика
-    const formattedData = data
-      .filter(row => row[line.angleAxis] != null && row[line.magnitudeAxis] != null)
-      .map((row) => {
-        const angleValue = parseFloat(row[line.angleAxis]);
-        const magnitudeValue = parseFloat(row[line.magnitudeAxis]);
-        
-        return {
-          angle: isNaN(angleValue) ? 0 : angleValue,
-          value: isNaN(magnitudeValue) ? 0 : magnitudeValue,
-          originalAngle: row[line.angleAxis],
-          originalMagnitude: row[line.magnitudeAxis],
-          seriesId: line.id,
-          timestamp: Date.now()
-        };
-      });
-    
-    return formattedData;
-    
-  } catch (err) {
-    console.error(`Ошибка загрузки данных для радиальной линии ${line.id}:`, err);
-    return null;
-  }
-};
+  // loadLineData / loadRadialLineData вынесены в services/chartData.js
+  // (переиспользуются здесь и при импорте конфигурации полотна).
 
   // Применить все линии к графику
   const applyAllLines = async () => {
@@ -760,6 +665,29 @@ const loadRadialLineData = async (line) => {
                       <i className="bi bi-arrow-clockwise"></i> Сброс
                     </button>
                   </div>
+                  <div className="btn-group w-100 mt-2" role="group">
+                    <button
+                      className="btn btn-outline-success btn-sm"
+                      onClick={onExportCanvas}
+                      title="Сохранить конфигурацию полотна в файл"
+                    >
+                      <i className="bi bi-download"></i> Сохранить
+                    </button>
+                    <button
+                      className="btn btn-outline-primary btn-sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Загрузить конфигурацию полотна из файла"
+                    >
+                      <i className="bi bi-upload"></i> Загрузить
+                    </button>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    style={{ display: 'none' }}
+                    onChange={handleImportFile}
+                  />
                 </div>
               </div>
 

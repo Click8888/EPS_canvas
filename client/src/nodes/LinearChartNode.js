@@ -10,10 +10,12 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   const [chartData, setChartData] = useState([]);
   const [nodeSize, setNodeSize] = useState({ width: data.width || 600, height: data.height || 1200 });
   const [isResizing, setIsResizing] = useState(false);
-  const [updateConfig, setUpdateConfig] = useState({
+  // Настройки обновления и окна данных. Поднимаются в node.data (data.updateConfig),
+  // чтобы попадать в сохранённую конфигурацию полотна и восстанавливаться при импорте.
+  // На монтировании сеем из data.updateConfig, но автообновление всегда стартует выключенным.
+  const [updateConfig, setUpdateConfig] = useState(() => ({
     interval: 20,
     pointLimit: 200,
-    isAutoUpdate: false,
     lastUpdateTime: null,
     // Режим выбора окна данных:
     // 'points'   — последние N точек (LIMIT), ось X тянется за данными;
@@ -23,8 +25,10 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     rangeStart: '',          // datetime-local строка для absolute
     rangeEnd: '',
     relativeValue: 60,       // число для relative
-    relativeUnit: 'seconds'  // 'seconds' | 'minutes' | 'hours'
-  });
+    relativeUnit: 'seconds', // 'seconds' | 'minutes' | 'hours'
+    ...(data.updateConfig || {}),
+    isAutoUpdate: false
+  }));
   const [dataSourceInfo, setDataSourceInfo] = useState(null);
   const [yScaleMode, setYScaleMode] = useState('dynamic');
   // Черновые значения полей: применяются в updateConfig только по подтверждению.
@@ -38,6 +42,15 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   const nodeRef = useRef(null);
   const prevLinesDataRef = useRef(null);
 
+  // Сохраняет настройки обновления в node.data, чтобы они попали в конфигурацию полотна.
+  const persistUpdateConfig = useCallback((cfg) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, updateConfig: cfg } } : node
+      )
+    );
+  }, [id, setNodes]);
+
   // Применяет введённые интервал, лимит точек и параметры диапазона к настройкам графика.
   const applyUpdateSettings = useCallback(() => {
     const interval = Math.max(1, parseInt(draftInterval, 10) || 1);
@@ -46,8 +59,8 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     setDraftInterval(String(interval));
     setDraftPointLimit(String(pointLimit));
     setDraftRelativeValue(String(relativeValue));
-    setUpdateConfig(prev => ({
-      ...prev,
+    const next = {
+      ...updateConfig,
       interval,
       pointLimit,
       rangeMode: draftRangeMode,
@@ -55,8 +68,10 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
       rangeEnd: draftRangeEnd,
       relativeValue,
       relativeUnit: draftRelativeUnit
-    }));
-  }, [draftInterval, draftPointLimit, draftRangeMode, draftRangeStart, draftRangeEnd, draftRelativeValue, draftRelativeUnit]);
+    };
+    setUpdateConfig(next);
+    persistUpdateConfig(next);
+  }, [updateConfig, draftInterval, draftPointLimit, draftRangeMode, draftRangeStart, draftRangeEnd, draftRelativeValue, draftRelativeUnit, persistUpdateConfig]);
 
   // Есть ли несохранённые изменения в полях (для подсветки кнопки подтверждения).
   const settingsDirty =
@@ -247,10 +262,10 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   }, [updateConfig.interval, updateConfig.isAutoUpdate]);
 
   const toggleAutoUpdate = useCallback(() => {
-    const newState = !updateConfig.isAutoUpdate;
-    setUpdateConfig(prev => ({ ...prev, isAutoUpdate: newState }));
-    console.log(data)
-  }, [updateConfig.isAutoUpdate]);
+    const next = { ...updateConfig, isAutoUpdate: !updateConfig.isAutoUpdate };
+    setUpdateConfig(next);
+    persistUpdateConfig(next);
+  }, [updateConfig, persistUpdateConfig]);
 
   useEffect(() => {
     if (data.initialData && Array.isArray(data.initialData) && data.initialData.length > 0) {

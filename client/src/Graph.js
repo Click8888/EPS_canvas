@@ -15,6 +15,8 @@ import Sidebar from './components/Sidebar';
 import { useTheme } from './components/ThemeContext';
 import LinearChartNode from './nodes/LinearChartNode';
 import RadialChartNode from './nodes/RadialChartNode';
+import { serializeCanvas, downloadConfig, deserializeCanvas } from './services/canvasConfig';
+import { reloadLinesData } from './services/chartData';
 
 // Вспомогательные узлы (DataSourceNode и ProcessorNode можно позже тоже вынести)
 const DataSourceNode = ({ data, selected, id }) => {
@@ -207,6 +209,45 @@ const Graph = () => {
     processors: nodes.filter(n => n.type === 'processorNode').length
   }), [nodes, edges]);
 
+  // Экспорт текущего полотна в .json-файл (только настройки, без точек данных).
+  const handleExportCanvas = useCallback(() => {
+    if (nodes.length === 0) {
+      window.alert('Полотно пустое — нечего сохранять');
+      return;
+    }
+    downloadConfig(serializeCanvas(nodes, edges, nodeCounter));
+  }, [nodes, edges, nodeCounter]);
+
+  // Импорт конфигурации: восстанавливаем узлы/связи, затем дозагружаем точки из БД.
+  const handleImportConfig = useCallback(async (config) => {
+    if (!window.confirm('Заменить текущее полотно загруженной конфигурацией?')) return;
+
+    const { nodes: importedNodes, edges: importedEdges, nodeCounter: importedCounter } =
+      deserializeCanvas(config);
+
+    setNodes(importedNodes);
+    setEdges(importedEdges);
+    setSelectedNode(null);
+    setNodeCounter(importedCounter);
+
+    // Конфиг сохраняется без данных — подгружаем точки заново тем же путём,
+    // что и кнопка «Применить параметры» (через window.updateNodeData).
+    const chartNodes = importedNodes.filter(
+      (n) => n.type === 'linearChartNode' || n.type === 'radialChartNode'
+    );
+    for (const node of chartNodes) {
+      if (!node.data?.lines?.length) continue;
+      try {
+        const linesWithData = await reloadLinesData(node);
+        if (window.updateNodeData) {
+          window.updateNodeData(node.id, { lines: linesWithData, timestamp: Date.now() });
+        }
+      } catch (err) {
+        console.error(`Не удалось загрузить данные для узла ${node.id}:`, err);
+      }
+    }
+  }, [setNodes, setEdges, setNodeCounter]);
+
   return (
     <div className="graph-container">
       <Sidebar
@@ -215,6 +256,8 @@ const Graph = () => {
         onAddRadialChartNode={addRadialChartNode}
         onDeleteSelectedNode={deleteSelectedNode}
         onResetGraph={resetGraph}
+        onExportCanvas={handleExportCanvas}
+        onImportConfig={handleImportConfig}
         selectedNode={selectedNode}
         graphInfo={getGraphInfo()}
       />

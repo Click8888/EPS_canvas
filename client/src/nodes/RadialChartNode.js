@@ -9,22 +9,36 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
   const { getNode, setNodes } = useReactFlow();
   const [nodeSize, setNodeSize] = useState({ width: data.width || 800, height: data.height || 800 });
   const [isResizing, setIsResizing] = useState(false);
-  const [updateConfig, setUpdateConfig] = useState({
+  // Настройки обновления поднимаются в node.data, чтобы сохраняться в конфигурации полотна.
+  // На монтировании сеем из data.updateConfig, автообновление всегда стартует выключенным.
+  const [updateConfig, setUpdateConfig] = useState(() => ({
     interval: 20,
-    isAutoUpdate: false,
-    lastUpdateTime: null
-  });
+    lastUpdateTime: null,
+    ...(data.updateConfig || {}),
+    isAutoUpdate: false
+  }));
   const [currentLines, setCurrentLines] = useState([]);
   // Черновое значение интервала: применяется в updateConfig только по подтверждению.
   const [draftInterval, setDraftInterval] = useState(String(updateConfig.interval));
   const nodeRef = useRef(null);
 
+  // Сохраняет настройки обновления в node.data, чтобы они попали в конфигурацию полотна.
+  const persistUpdateConfig = useCallback((cfg) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, updateConfig: cfg } } : node
+      )
+    );
+  }, [id, setNodes]);
+
   // Применяет введённый интервал к настройкам графика.
   const applyUpdateSettings = useCallback(() => {
     const interval = Math.max(1, parseInt(draftInterval, 10) || 1);
     setDraftInterval(String(interval));
-    setUpdateConfig(prev => ({ ...prev, interval }));
-  }, [draftInterval]);
+    const next = { ...updateConfig, interval };
+    setUpdateConfig(next);
+    persistUpdateConfig(next);
+  }, [updateConfig, draftInterval, persistUpdateConfig]);
 
   // Есть ли несохранённое изменение интервала (для подсветки кнопки подтверждения).
   const settingsDirty = String(updateConfig.interval) !== draftInterval;
@@ -120,8 +134,10 @@ const RadialChartNode = ({ data, isConnectable, selected, id }) => {
   }, [updateConfig.interval, updateConfig.isAutoUpdate]);
 
   const toggleAutoUpdate = useCallback(() => {
-    setUpdateConfig(prev => ({ ...prev, isAutoUpdate: !prev.isAutoUpdate }));
-  }, []);
+    const next = { ...updateConfig, isAutoUpdate: !updateConfig.isAutoUpdate };
+    setUpdateConfig(next);
+    persistUpdateConfig(next);
+  }, [updateConfig, persistUpdateConfig]);
 
   useEffect(() => {
     if (data.width && data.height) {
