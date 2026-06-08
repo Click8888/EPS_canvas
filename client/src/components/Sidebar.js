@@ -5,12 +5,27 @@ import { parseConfigFile } from '../services/canvasConfig';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 
+// Доступные шрифты блокнота (значение — валидный CSS font-family).
+const NOTEPAD_FONTS = [
+  { value: 'sans-serif', label: 'Без засечек' },
+  { value: 'serif', label: 'С засечками' },
+  { value: 'monospace', label: 'Моноширинный' },
+  { value: "'Times New Roman', serif", label: 'Times New Roman' },
+  { value: 'Georgia, serif', label: 'Georgia' },
+  { value: 'Arial, sans-serif', label: 'Arial' },
+  { value: "'Courier New', monospace", label: 'Courier New' }
+];
+
+// Значения стиля блокнота по умолчанию.
+const NOTEPAD_DEFAULTS = { fontFamily: 'sans-serif', fontSize: 14, bold: false, italic: false, underline: false };
+
 const Sidebar = ({
   width = 300,
   minWidth = 20,
   maxWidth = 600,
   onAddChartNode,
   onAddRadialChartNode,
+  onAddNotepad,
   onDeleteSelectedNode,
   onResetGraph,
   onExportCanvas,
@@ -34,6 +49,8 @@ const Sidebar = ({
   // Настройки серий (общие для всех серий графика): толщина линии, размер точек.
   const [showSeriesSettings, setShowSeriesSettings] = useState(false);
   const [seriesStyles, setSeriesStyles] = useState({}); // { chartId: { lineWidth, symbolSize } }
+  // Стиль текста блокнотов (живое значение контролов сайдбара). { nodeId: { fontFamily, fontSize, bold, italic, underline } }
+  const [notepadStyles, setNotepadStyles] = useState({});
 
   // Палитра цветов для линий
   const COLOR_PALETTE = [
@@ -79,6 +96,34 @@ const Sidebar = ({
     setCurrentLines(updatedLines);
     if (window.updateNodeData) {
       window.updateNodeData(chartId, { lines: updatedLines, timestamp: Date.now() });
+    }
+  };
+
+  // Стиль текста блокнота из data узла (с дефолтами) — для импорта/восстановления.
+  const notepadStyleFromData = (node) => ({
+    fontFamily: node?.data?.fontFamily ?? NOTEPAD_DEFAULTS.fontFamily,
+    fontSize: node?.data?.fontSize ?? NOTEPAD_DEFAULTS.fontSize,
+    bold: node?.data?.bold ?? NOTEPAD_DEFAULTS.bold,
+    italic: node?.data?.italic ?? NOTEPAD_DEFAULTS.italic,
+    underline: node?.data?.underline ?? NOTEPAD_DEFAULTS.underline
+  });
+
+  // Текущий стиль текста выбранного блокнота: живое значение из локального состояния,
+  // иначе — из data узла (импорт/восстановление), иначе — дефолт.
+  const currentNotepadStyle = (selectedNode && notepadStyles[selectedNode.id]) || notepadStyleFromData(selectedNode);
+
+  // Меняет параметр стиля блокнота: обновляет локальное состояние (мгновенный отклик
+  // контролов) и сразу применяет к узлу через window.updateNotepadData. База берётся из
+  // prev[id] (функциональная форма) — корректно даже если несколько изменений сбатчатся.
+  const updateNotepadStyle = (field, value) => {
+    if (!selectedNode) return;
+    const id = selectedNode.id;
+    setNotepadStyles(prev => {
+      const base = prev[id] || notepadStyleFromData(selectedNode);
+      return { ...prev, [id]: { ...base, [field]: value } };
+    });
+    if (window.updateNotepadData) {
+      window.updateNotepadData(id, { [field]: value });
     }
   };
 
@@ -633,11 +678,17 @@ const Sidebar = ({
                   >
                     <i className="bi bi-bar-chart"></i> Линейный график
                   </button>
-                  <button 
+                  <button
                     className="btn btn-outline-primary btn-sm w-100 mb-2"
                     onClick={onAddRadialChartNode}
                   >
                     <i className="bi bi-radar"></i> Радиальный график
+                  </button>
+                  <button
+                    className="btn btn-outline-primary btn-sm w-100 mb-2"
+                    onClick={onAddNotepad}
+                  >
+                    <i className="bi bi-journal-text"></i> Блокнот
                   </button>
                 </div>
               </div>
@@ -696,7 +747,7 @@ const Sidebar = ({
                 <div className="sidebar-section">
                   <h6 className="sidebar-section-title">
                     <i className="bi bi-node-plus"></i>
-                    Параметры графика #{selectedNode.id}
+                    {selectedNode.type === 'notepadNode' ? 'Параметры блокнота' : 'Параметры графика'} #{selectedNode.id}
                   </h6>
                   <div className="selected-node-info">
                     <div className="selected-node-header">
@@ -708,14 +759,18 @@ const Sidebar = ({
                           selectedNode.type === 'linearChartNode' ? 'bi-graph-up' :
                           selectedNode.type === 'radialChartNode' ? 'bi-radar' :
                           selectedNode.type === 'dataSourceNode' ? 'bi-database' :
+                          selectedNode.type === 'notepadNode' ? 'bi-journal-text' :
                           'bi-gear'
                         }`}></i>
                         {selectedNode.type === 'linearChartNode' && 'Линейный график'}
                         {selectedNode.type === 'radialChartNode' && 'Радиальный график'}
                         {selectedNode.type === 'dataSourceNode' && 'Источник данных'}
                         {selectedNode.type === 'processorNode' && 'Обработчик'}
+                        {selectedNode.type === 'notepadNode' && 'Блокнот'}
                       </span>
                     </div>
+
+                    {(selectedNode.type === 'linearChartNode' || selectedNode.type === 'radialChartNode') && (
                     <div className="selected-node-details">
                       <hr className="series-divider" />
                       <div className="series-section-title">
@@ -975,6 +1030,74 @@ const Sidebar = ({
                         )}
                       </div>
                     </div>
+                    )}
+
+                    {selectedNode.type === 'notepadNode' && (
+                    <div className="selected-node-details notepad-params">
+                      <hr className="series-divider" />
+                      <div className="series-section-title">
+                        <i className="bi bi-fonts me-1"></i>
+                        Параметры текста
+                      </div>
+
+                      {/* Шрифт */}
+                      <div className="mb-2 mt-2">
+                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Шрифт:</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={currentNotepadStyle.fontFamily}
+                          onChange={(e) => updateNotepadStyle('fontFamily', e.target.value)}
+                          style={{ fontSize: '12px', fontFamily: currentNotepadStyle.fontFamily }}
+                        >
+                          {NOTEPAD_FONTS.map((f) => (
+                            <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Начертание: жирный / курсив / подчёркнутый */}
+                      <div className="mb-2">
+                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Начертание:</label>
+                        <div className="btn-group w-100" role="group">
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${currentNotepadStyle.bold ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => updateNotepadStyle('bold', !currentNotepadStyle.bold)}
+                            title="Жирный"
+                            style={{ fontWeight: 'bold' }}
+                          >Ж</button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${currentNotepadStyle.italic ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => updateNotepadStyle('italic', !currentNotepadStyle.italic)}
+                            title="Курсив"
+                            style={{ fontStyle: 'italic' }}
+                          >К</button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${currentNotepadStyle.underline ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => updateNotepadStyle('underline', !currentNotepadStyle.underline)}
+                            title="Подчёркнутый"
+                            style={{ textDecoration: 'underline' }}
+                          >Ч</button>
+                        </div>
+                      </div>
+
+                      {/* Размер шрифта */}
+                      <div className="series-setting-row">
+                        <label className="mb-0">Размер шрифта</label>
+                        <span className="series-setting-value">{currentNotepadStyle.fontSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="8"
+                        max="48"
+                        step="1"
+                        value={currentNotepadStyle.fontSize}
+                        onChange={(e) => updateNotepadStyle('fontSize', parseInt(e.target.value, 10))}
+                      />
+                    </div>
+                    )}
                   </div>
                 </div>
               )}

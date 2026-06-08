@@ -22,6 +22,21 @@
   position: relative;
 }
 
+/* React Flow по умолчанию ставит узлам inline `will-change: transform` ради плавного
+   перетаскивания. Но из-за этого Chrome держит узел в слое, растрированном в масштабе 1×,
+   и при увеличенном холсте (transform: scale(zoom) на viewport, zoom > 1) канвас графика
+   показывается как растянутая картинка → «мыльный», пока выделение узла (подъём z-index)
+   не заставит браузер пересоздать слой в нужном масштабе. Снимаем will-change в покое —
+   тогда узел растрируется сразу в текущем масштабе зума и канвас чёткий с первого кадра.
+   !important перебивает inline-стиль React Flow. На время перетаскивания возвращаем
+   will-change для плавности (в движении лёгкая мягкость не критична). */
+.react-flow__node {
+  will-change: auto !important;
+}
+.react-flow__node.dragging {
+  will-change: transform !important;
+}
+
 /* Стили для кастомных узлов */
 .chart-node {
   width: 1200px;
@@ -1102,6 +1117,89 @@ body.resizing-legend * {
 }
 
 [data-theme="dark"] .radial-chart-node {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   БЛОКНОТ - узел-заметка на холсте
+   ============================================ */
+
+.notepad-node {
+  width: 360px;
+  height: 280px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.notepad-node.resizing {
+  opacity: 0.85;
+}
+
+.notepad-node-header {
+  padding: 4px 8px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  user-select: none;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.notepad-node-header:active {
+  cursor: grabbing;
+}
+
+.notepad-node-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-weight: bold;
+}
+
+.notepad-node-title i {
+  font-size: 16px;
+  color: #ffc107;
+}
+
+.notepad-node-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.notepad-textarea {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  background-color: transparent;
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.notepad-textarea::placeholder {
+  color: var(--text-secondary, #888);
+}
+
+[data-theme="dark"] .notepad-node {
+  /* В тёмной теме фон как у радиального графика и холста (--bg-primary, #1e1e1e),
+     а не синий --bg-card. */
+  background-color: var(--bg-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 

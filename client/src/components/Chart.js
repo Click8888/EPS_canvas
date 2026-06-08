@@ -785,9 +785,10 @@ useEffect(() => {
     const d = lines[i].data;
     const len = d ? d.length : 0;
     const last = len > 0 ? d[len - 1] : null;
-    // lineWidth/symbolSize в сигнатуре — чтобы смена стиля серий сразу
-    // перерисовала график, а не ждала изменения данных.
-    sig += `${lines[i].id}:${len}:${last ? last.time : ''}:${lines[i].lineWidth}:${lines[i].symbolSize}|`;
+    // color/lineWidth/symbolSize в сигнатуре — чтобы смена стиля серий сразу
+    // перерисовала график, а не ждала изменения данных (иначе цвет применялся
+    // только после переключения автообновления, сбрасывающего сигнатуру).
+    sig += `${lines[i].id}:${len}:${last ? last.time : ''}:${lines[i].color}:${lines[i].lineWidth}:${lines[i].symbolSize}|`;
   }
   if (prevLinesDataRef.current === sig) {
     // Данные не изменились — пропускаем обновление
