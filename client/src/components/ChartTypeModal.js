@@ -1,4 +1,3 @@
-// ChartTypeModal.js
 import React from 'react';
 
 const ChartTypeModal = ({ show, onClose, selectedChartType, onChartTypeChange, onAddChart }) => {

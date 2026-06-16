@@ -1,6 +1,3 @@
-/* SqlPanel.css - Стили для компонента SqlPanel */
-
-/* Основной контейнер SQL панели */
 .sql-panel-grafana {
   position: fixed;
   bottom: 0;

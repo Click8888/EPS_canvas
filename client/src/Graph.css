@@ -22,14 +22,7 @@
   position: relative;
 }
 
-/* React Flow по умолчанию ставит узлам inline `will-change: transform` ради плавного
-   перетаскивания. Но из-за этого Chrome держит узел в слое, растрированном в масштабе 1×,
-   и при увеличенном холсте (transform: scale(zoom) на viewport, zoom > 1) канвас графика
-   показывается как растянутая картинка → «мыльный», пока выделение узла (подъём z-index)
-   не заставит браузер пересоздать слой в нужном масштабе. Снимаем will-change в покое —
-   тогда узел растрируется сразу в текущем масштабе зума и канвас чёткий с первого кадра.
-   !important перебивает inline-стиль React Flow. На время перетаскивания возвращаем
-   will-change для плавности (в движении лёгкая мягкость не критична). */
+
 .react-flow__node {
   will-change: auto !important;
 }
@@ -81,27 +74,20 @@
   cursor: crosshair;
 }
 
-/* Сглаживание HTML-наложений поверх канваса (тултип, кнопка сброса, бейджи)
-   у линейной и радиальной ноды. На сам канвас не влияет — там чёткость даёт
-   devicePixelRatio. Свойства не задаются в других .chart-node-content правилах,
-   поэтому применяются независимо от порядка в каскаде. */
+
 .chart-node-content {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: geometricPrecision;
 }
 
-/* Курсор над областью линейного графика — crosshair, как в легенде.
-   !important и вложенный * нужны, чтобы перебить inline-курсор, который zrender
-   выставляет на корневом элементе/канвасе ECharts при наведении. */
+
 .chart-canvas-area,
 .chart-canvas-area * {
   cursor: crosshair !important;
 }
 
-/* Разделитель для регулировки ширины колонки легенды (перетаскивание мышью).
-   Сам элемент — прозрачная зона захвата 6px; видимая линия тонкая (2px) и
-   рисуется по центру через ::before. */
+
 .legend-resizer {
   flex: 0 0 6px;
   align-self: stretch;
@@ -126,8 +112,6 @@
   background-color: #4dabf7;
 }
 
-/* Во время перетаскивания разделителя держим col-resize по всему документу,
-   перебивая в т.ч. crosshair над областью графика. */
 body.resizing-legend,
 body.resizing-legend * {
   cursor: col-resize !important;
@@ -1070,10 +1054,6 @@ body.resizing-legend * {
   cursor: crosshair;
 }
 
-/* Маркеры радиального графика используют общие стили .resize-handle-square
-   (определены выше) — отдельные правила убраны, чтобы вид совпадал с линейным.
-   Синяя рамка выделения тоже убрана: выделение показывает общий индикатор
-   .react-flow__node.selected, как и у линейного графика. */
 
 /* Стили для статистики в Sidebar */
 .graph-stats {
@@ -1197,8 +1177,7 @@ body.resizing-legend * {
 }
 
 [data-theme="dark"] .notepad-node {
-  /* В тёмной теме фон как у радиального графика и холста (--bg-primary, #1e1e1e),
-     а не синий --bg-card. */
+
   background-color: var(--bg-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }

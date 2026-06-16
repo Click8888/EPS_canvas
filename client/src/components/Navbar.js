@@ -1,6 +1,3 @@
-// Navbar.js - замените все className у полей ввода, убрав принудительный тёмный стиль
-// и добавив динамическое переключение
-
 import { useState, useEffect } from 'react';
 import { useTheme } from './ThemeContext';
 import './navbar.css';
@@ -25,7 +22,7 @@ export default function Navbar() {
   const [successMsg, setSuccessMsg]         = useState('');
   const { isDark, toggleTheme } = useTheme();
 
-  // Динамические классы для полей ввода
+  // классы инпутов под тёмную/светлую тему
   const inputClass = `form-control form-control-sm ${isDark ? 'bg-dark text-light border-secondary' : 'bg-white text-dark border-secondary'}`;
   const codeBgClass = isDark ? '#1a1a2e' : '#f8f9fa';
   const modalContentClass = isDark ? 'modal-content bg-dark text-light' : 'modal-content';

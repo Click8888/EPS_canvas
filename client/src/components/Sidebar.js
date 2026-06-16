@@ -5,7 +5,7 @@ import { parseConfigFile } from '../services/canvasConfig';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 
-// Доступные шрифты блокнота (значение — валидный CSS font-family).
+// шрифты для блокнота
 const NOTEPAD_FONTS = [
   { value: 'sans-serif', label: 'Без засечек' },
   { value: 'serif', label: 'С засечками' },
@@ -16,7 +16,7 @@ const NOTEPAD_FONTS = [
   { value: "'Courier New', monospace", label: 'Courier New' }
 ];
 
-// Значения стиля блокнота по умолчанию.
+// дефолтный стиль блокнота
 const NOTEPAD_DEFAULTS = { fontFamily: 'sans-serif', fontSize: 14, bold: false, italic: false, underline: false };
 
 const Sidebar = ({
@@ -44,42 +44,41 @@ const Sidebar = ({
 
   const [chartLines, setChartLines] = useState({}); // { chartId: [lines] }
   const [nextLineIds, setNextLineIds] = useState({}); // { chartId: nextId }
-  const [currentLines, setCurrentLines] = useState([]); // Линии текущего выбранного графика
+  const [currentLines, setCurrentLines] = useState([]); // линии выбранного графика
   const [tableColumnsCache, setTableColumnsCache] = useState({});
-  // Настройки серий (общие для всех серий графика): толщина линии, размер точек.
+  // общие настройки серий: толщина линии, размер точек
   const [showSeriesSettings, setShowSeriesSettings] = useState(false);
   const [seriesStyles, setSeriesStyles] = useState({}); // { chartId: { lineWidth, symbolSize } }
-  // Стиль текста блокнотов (живое значение контролов сайдбара). { nodeId: { fontFamily, fontSize, bold, italic, underline } }
+  // стили текста блокнотов { nodeId: { fontFamily, fontSize, bold, italic, underline } }
   const [notepadStyles, setNotepadStyles] = useState({});
 
-  // Палитра цветов для линий
+  // палитра цветов линий
   const COLOR_PALETTE = [
     '#133592', '#e74c3c', '#2ecc71', '#f39c12', 
     '#9b59b6', '#1abc9c', '#e67e22', '#3498db',
     '#16a085', '#c0392b', '#8e44ad', '#d35400'
   ];
 
-  // Функция для генерации случайного цвета из палитры
+  // случайный цвет из палитры
   const getRandomColor = () => {
     return COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)];
   };
 
-  // Состояние для параметров графика
+  // таблицы, флаг загрузки, текст ошибки
   const [chartParams, setChartParams] = useState({
     tables: [],
     isLoadingParams: false,
     paramError: ''
   });
 
-  // Текущий стиль серий выбранного графика (общий для всех серий).
-  // Берём сохранённый стиль графика, иначе — из первой линии, иначе — дефолт.
+  // стиль серий выбранного графика: сохранённый, иначе из первой линии, иначе дефолт
   const currentSeriesStyle = (selectedNode && seriesStyles[selectedNode.id]) || {
     lineWidth: currentLines[0]?.lineWidth ?? 2.2,
-    symbolSize: currentLines[0]?.symbolSize ?? 0
+    symbolSize: currentLines[0]?.symbolSize ?? 0,
+    arrowScale: currentLines[0]?.arrowScale ?? 1
   };
 
-  // Меняет один параметр стиля и сразу применяет его КО ВСЕМ сериям графика,
-  // обновляя ноду вживую (данные серий сохраняются).
+  // меняем один параметр стиля и применяем сразу ко всем сериям
   const updateSeriesStyle = (field, value) => {
     if (!selectedNode) return;
     const chartId = selectedNode.id;
@@ -90,7 +89,8 @@ const Sidebar = ({
     const updatedLines = baseLines.map(line => ({
       ...line,
       lineWidth: newStyle.lineWidth,
-      symbolSize: newStyle.symbolSize
+      symbolSize: newStyle.symbolSize,
+      arrowScale: newStyle.arrowScale
     }));
     setChartLines(prev => ({ ...prev, [chartId]: updatedLines }));
     setCurrentLines(updatedLines);
@@ -99,7 +99,7 @@ const Sidebar = ({
     }
   };
 
-  // Стиль текста блокнота из data узла (с дефолтами) — для импорта/восстановления.
+  // стиль текста блокнота из data узла, с дефолтами
   const notepadStyleFromData = (node) => ({
     fontFamily: node?.data?.fontFamily ?? NOTEPAD_DEFAULTS.fontFamily,
     fontSize: node?.data?.fontSize ?? NOTEPAD_DEFAULTS.fontSize,
@@ -108,13 +108,10 @@ const Sidebar = ({
     underline: node?.data?.underline ?? NOTEPAD_DEFAULTS.underline
   });
 
-  // Текущий стиль текста выбранного блокнота: живое значение из локального состояния,
-  // иначе — из data узла (импорт/восстановление), иначе — дефолт.
+  // текущий стиль блокнота: из локального стейта, иначе из data узла, иначе дефолт
   const currentNotepadStyle = (selectedNode && notepadStyles[selectedNode.id]) || notepadStyleFromData(selectedNode);
 
-  // Меняет параметр стиля блокнота: обновляет локальное состояние (мгновенный отклик
-  // контролов) и сразу применяет к узлу через window.updateNotepadData. База берётся из
-  // prev[id] (функциональная форма) — корректно даже если несколько изменений сбатчатся.
+  // меняем параметр стиля блокнота: пишем в локальный стейт и сразу в узел
   const updateNotepadStyle = (field, value) => {
     if (!selectedNode) return;
     const id = selectedNode.id;
@@ -127,7 +124,7 @@ const Sidebar = ({
     }
   };
 
-   // Функция загрузки таблиц из БД
+   // загрузка таблиц из БД
   const loadTables = useCallback(async () => {
     try {
       setChartParams(prev => ({ ...prev, isLoadingParams: true, paramError: '' }));
@@ -156,20 +153,18 @@ const Sidebar = ({
   }, []);
 
 
-  // Загрузка линий при выборе графика
+  // при выборе графика подгружаем его линии
   useEffect(() => {
     if (selectedNode && (selectedNode.type === 'linearChartNode' || selectedNode.type === 'radialChartNode')) {
       const chartId = selectedNode.id;
 
-      // Если в локальном стейте панели ещё нет линий этого графика —
-      // пересеваем их из node.data.lines (актуально после импорта конфигурации
-      // полотна), иначе создаём одну линию по умолчанию.
+      // если линий этого графика ещё нет в стейте, берём из node.data.lines или создаём одну
       if (!chartLines[chartId]) {
         const savedLines = selectedNode.data?.lines;
         if (Array.isArray(savedLines) && savedLines.length > 0) {
-          // Берём конфигурацию линий без тяжёлых данных точек.
+          // конфиг линий без точек
           const seededLines = savedLines.map(({ data, ...rest }) => ({ ...rest, data: [] }));
-          // nextLineId — максимум числовых суффиксов id (line-N) + 1.
+          // nextLineId = макс. номер из line-N плюс 1
           const maxLineNum = seededLines.reduce((max, l) => {
             const num = parseInt(String(l.id).split('-')[1], 10);
             return Number.isFinite(num) && num > max ? num : max;
@@ -194,7 +189,7 @@ const Sidebar = ({
           setCurrentLines([defaultLine]);
         }
       } else {
-        // Загружаем существующие линии этого графика
+        // берём уже загруженные линии графика
         setCurrentLines(chartLines[chartId]);
       }
     } else {
@@ -202,7 +197,7 @@ const Sidebar = ({
     }
   }, [selectedNode, chartLines]);
 
-  // Обработка выбора файла конфигурации полотна для импорта.
+  // выбор файла конфига для импорта
   const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // сбрасываем, чтобы можно было выбрать тот же файл повторно
@@ -215,32 +210,32 @@ const Sidebar = ({
     }
   };
 
-  // Загрузка таблиц при монтировании компонента и при смене БД
+  // грузим таблицы при монтировании и при смене БД
   useEffect(() => {
-    // Загружаем таблицы при первом рендере
+    // первая загрузка
     loadTables();
     
-    // Слушатель события смены БД
+    // слушаем смену БД
     const handleDbConnectionChange = (event) => {
       console.log('Обнаружена смену БД, перезагружаем таблицы...', event.detail);
       
-      // Очищаем кэш столбцов при смене БД
+      // чистим кэш столбцов
       setTableColumnsCache({});
       
-      // Перезагружаем список таблиц из новой БД
+      // перезагружаем таблицы
       loadTables();
     };
     
     window.addEventListener('db-connection-changed', handleDbConnectionChange);
     
-    // Очистка слушателя при размонтировании компонента
+    // снимаем слушатель при размонтировании
     return () => {
       window.removeEventListener('db-connection-changed', handleDbConnectionChange);
     };
   }, [loadTables]);
 
 
-  //Добавить линию
+  // добавить линию
   const addLine = () => {
   if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
   
@@ -274,7 +269,7 @@ const Sidebar = ({
   setCurrentLines(updatedLines);
 };
 
-  // Удалить линию
+  // удалить линию
   const removeLine = (lineId) => {
     if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
     
@@ -289,7 +284,7 @@ const Sidebar = ({
     setCurrentLines(updatedLines);
   };
 
-  // Обновить параметры линии
+  // обновить параметры линии
   const updateLine = (lineId, field, value) => {
     if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
     
@@ -306,11 +301,11 @@ const Sidebar = ({
     setCurrentLines(updatedLines);
   };
 
-  // Загрузить столбцы для выбранной таблицы линии
+  // столбцы выбранной таблицы для линии
   const loadColumnsForLine = async (lineId, tableName) => {
     if (!tableName) return;
     
-    // Проверяем кэш
+    // смотрим в кэш
     if (tableColumnsCache[tableName]) {
       const columns = tableColumnsCache[tableName];
       const xAxis = columns.find(col => 
@@ -362,7 +357,7 @@ const Sidebar = ({
       if (data.length > 0) {
         const columns = Object.keys(data[0]);
         
-        // Сохраняем в кэш
+        // кладём в кэш
         setTableColumnsCache(prev => ({
           ...prev,
           [tableName]: columns
@@ -404,10 +399,9 @@ const Sidebar = ({
     }
   };
 
-  // loadLineData / loadRadialLineData вынесены в services/chartData.js
-  // (переиспользуются здесь и при импорте конфигурации полотна).
+  // loadLineData / loadRadialLineData лежат в services/chartData.js
 
-  // Применить все линии к графику
+  // применить все линии к графику
   const applyAllLines = async () => {
   if (!selectedNode || currentLines.length === 0) {
     setChartParams(prev => ({
@@ -417,7 +411,7 @@ const Sidebar = ({
     return;
   }
   
-  // Проверяем, что выбран узел графика (любого типа)
+  // должен быть выбран узел графика
   if (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode') {
     setChartParams(prev => ({
       ...prev,
@@ -426,7 +420,7 @@ const Sidebar = ({
     return;
   }
   
-  // Проверяем, что все линии заполнены
+  // все линии должны быть заполнены
   const invalidLines = currentLines.filter(line => !line.table || !line.xAxis || !line.yAxis);
   if (invalidLines.length > 0) {
     setChartParams(prev => ({
@@ -460,7 +454,7 @@ const Sidebar = ({
     }));
     setCurrentLines(updatedLines);
     
-    // Отправляем данные в узел
+    // шлём данные в узел
     if (window.updateNodeData && selectedNode) {
       window.updateNodeData(selectedNode.id, {
         lines: updatedLines,
@@ -486,7 +480,7 @@ const Sidebar = ({
 };
 
 
-  // Функция переключения сайдбара
+  // свернуть/развернуть сайдбар
   const toggleSidebar = useCallback(() => {
     if (isAnimating || isResizing) return;
     
@@ -505,14 +499,14 @@ const Sidebar = ({
     }, 300);
   }, [isCollapsed, isAnimating, isResizing, width, minWidth]);
 
-  // Обработчик клика по свернутому сайдбару
+  // клик по свёрнутому сайдбару
   const handleSidebarClick = useCallback((e) => {
     if (isCollapsed && !isResizing && e.target.closest('.sidebar') && !e.target.closest('.sidebar-resizer')) {
       toggleSidebar();
     }
   }, [isCollapsed, isResizing, toggleSidebar]);
 
-  // Безопасная установка ширины
+  // установка ширины через rAF
   const safeSetWidth = useCallback((newWidth) => {
     if (resizeTimeoutRef.current) {
       cancelAnimationFrame(resizeTimeoutRef.current);
@@ -523,7 +517,7 @@ const Sidebar = ({
     });
   }, []);
 
-  // Обработчик начала ресайза
+  // начало ресайза
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -593,7 +587,7 @@ const Sidebar = ({
     };
   }, [sidebarWidth, minWidth, maxWidth, isCollapsed, collapseThreshold, safeSetWidth]);
 
-  // Эффект для применения ширины
+  // применяем ширину
   useEffect(() => {
     if (!sidebarRef.current) return;
     
@@ -614,7 +608,7 @@ const Sidebar = ({
     sidebar.style.width = `${sidebarWidth}px`;
   }, [sidebarWidth, isResizing, isAnimating]);
 
-  // Очистка
+  // очистка
   useEffect(() => {
     return () => {
       if (resizeTimeoutRef.current) {
@@ -829,6 +823,22 @@ const Sidebar = ({
                               />
                             </>
                           )}
+                          {selectedNode.type === 'radialChartNode' && (
+                            <>
+                              <div className="series-setting-row">
+                                <label className="mb-0">Размер наконечника</label>
+                                <span className="series-setting-value">{currentSeriesStyle.arrowScale}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="2.5"
+                                step="0.1"
+                                value={currentSeriesStyle.arrowScale}
+                                onChange={(e) => updateSeriesStyle('arrowScale', parseFloat(e.target.value))}
+                              />
+                            </>
+                          )}
                           <div className="series-settings-hint">Применяется ко всем сериям</div>
                         </div>
                       )}
@@ -908,7 +918,7 @@ const Sidebar = ({
                                   {line.table && tableColumnsCache[line.table] && (
                                     <>
                                       {selectedNode.type === 'radialChartNode' ? (
-                                        // Поля для радиального графика
+                                        // поля радиального графика
                                         <>
                                           <div className="mb-2">
                                             <label className="form-label mb-1" style={{ fontSize: '11px' }}>Угол:</label>
@@ -948,7 +958,7 @@ const Sidebar = ({
                                           </div>
                                         </>
                                       ) : (
-                                        // Поля для линейного графика
+                                        // поля линейного графика
                                         <>
                                           <div className="mb-2">
                                             <label className="form-label mb-1" style={{ fontSize: '11px' }}>Ось X:</label>
@@ -1105,7 +1115,7 @@ const Sidebar = ({
           </>
         )}
 
-        {/* Ресайзер с улучшенной визуализацией */}
+        {/* ресайзер */}
         <div 
           className={`sidebar-resizer ${isResizing ? 'active' : ''}`}
           onMouseDown={handleMouseDown}

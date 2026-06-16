@@ -14,10 +14,9 @@ function App() {
       <div className='erd-container d-flex flex-column vh-100'>
         <Navbar />
         <Routes>
-          {/* Полотно теперь на корне; отдельная главная страница удалена */}
+
           <Route path="/" element={<Graph />} />
           <Route path="/admin" element={<Admin />} />
-          {/* Старая ссылка на полотно и неизвестные пути ведут на / */}
           <Route path="/graph" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

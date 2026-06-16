@@ -1,6 +1,6 @@
-/* CSS Variables for theming */
+
 :root {
-  /* Light theme (default) */
+  /* светлая тема */
   --bg-primary: #ffffff;
   --bg-secondary: #e9ecef;
   --bg-card: #ffffff;
@@ -31,7 +31,7 @@
 }
 
 [data-theme="dark"] {
-  /* Dark theme */
+  /* темная тема */
   --bg-primary: #1e1e1e;
   --bg-secondary: #121212;
   --bg-card: #0f3460;
@@ -42,7 +42,7 @@
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   --accent-color: #888;
 
-  /* Сайдбар — тёмная тема (текущая палитра) */
+  /* сайдбар */
   --sidebar-bg: #1e1e1e;
   --sidebar-header-bg: rgba(0, 0, 0, 0.2);
   --sidebar-border: #4a5568;
@@ -57,7 +57,7 @@
 }
 
 
-/* Base styles */
+/* базовые стили */
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
@@ -72,7 +72,7 @@ body {
   background-color: var(--bg-primary);
 }
 
-/* Принудительное переопределение для Bootstrap компонентов */
+
 [data-theme="dark"] .navbar {
   background-color: #212529 !important; /* Темный фон для навбара */
 }
@@ -102,8 +102,7 @@ body {
 }
 
 .navbar {
-  background-color: #445260 !important;  /* тёмно-сине-серый */
-  /* Альтернативы: #343a40 (тёмно-серый), #1e2a36, #2d3748 */
+  background-color: #445260 !important; 
 }
 
 /* Эффект при наведении */

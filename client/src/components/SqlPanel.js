@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import '../App.css';
 
-// Helper function
 const normalizeId = (id) => {
   if (id === null || id === undefined || id === '') return null;
   return typeof id === 'string' ? parseInt(id, 10) : id;
 };
 
-// Компонент для отображения ошибок с возможностью закрытия
+// плашка ошибки с крестиком
 const ErrorAlert = ({ error, onClose }) => {
   const [isVisible, setIsVisible] = useState(true);
 
@@ -36,9 +35,9 @@ const ErrorAlert = ({ error, onClose }) => {
   );
 };
 
-// Компонент для настройки отдельной серии
+// настройки одной серии
 const SeriesSettings = ({ series, chart, onUpdate, onRemove, onExecute, tableNames, columnsByTable }) => {
-  // Используем selectedTable из series, а не из chart
+  // таблица из серии, а не из графика
   const availableColumns = series.selectedTable ? 
     columnsByTable[series.selectedTable] || [] : [];
 
@@ -61,7 +60,7 @@ const SeriesSettings = ({ series, chart, onUpdate, onRemove, onExecute, tableNam
   const handleTableChange = (tableName) => {
     onUpdate({ 
       selectedTable: tableName,
-      // Сбрасываем оси при смене таблицы
+      // при смене таблицы сбрасываем оси
       xAxis: '',
       yAxis: ''
     });
@@ -185,7 +184,7 @@ const SeriesSettings = ({ series, chart, onUpdate, onRemove, onExecute, tableNam
   );
 };
 
-// Компонент для настройки параметров графика
+// настройки графика
 const ChartSettings = ({ 
   chart, 
   charts, 
@@ -205,7 +204,7 @@ const ChartSettings = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(chart.title || '');
 
-  // Получаем доступные колонки для выбранной таблицы
+  // колонки выбранной таблицы
   const availableColumns = chart.selectedTable ? 
     columnsByTable[chart.selectedTable] || [] : [];
 
@@ -226,7 +225,7 @@ const ChartSettings = ({
     const updatedChart = {
       ...chart,
       selectedTable: tableName,
-      // Не сбрасываем оси, если они могут существовать в новой таблице
+      // оси не трогаем, если такие столбцы есть в новой таблице
       xAxis: chart.xAxis && columnsByTable[tableName]?.includes(chart.xAxis) ? chart.xAxis : '',
       yAxis: chart.yAxis && columnsByTable[tableName]?.includes(chart.yAxis) ? chart.yAxis : ''
     };
@@ -257,7 +256,7 @@ const ChartSettings = ({
     }
   };
 
-  // Получаем серии для текущего графика
+  // серии этого графика
   const series = chartSeries[chart.id] || [];
 
   const handleAddSeries = () => {
@@ -528,7 +527,7 @@ const SqlPanel = ({
 
   useEffect(() => {
     if (show) {
-      // Инициализация при открытии панели
+      // при открытии панели
     }
   }, [show]);
 
@@ -577,7 +576,7 @@ const SqlPanel = ({
   }, [onSelectChart]);
 
   const handleSaveSettings = useCallback((updatedChart) => {
-    // Обновляем график в основном состоянии
+    // пишем график в общий стейт
     setCharts(prev => prev.map(chart => 
       chart.id === updatedChart.id ? { ...chart, ...updatedChart } : chart
     ));

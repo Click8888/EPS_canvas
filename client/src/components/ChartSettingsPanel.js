@@ -17,12 +17,12 @@ const ChartSettingsPanel = ({ show, chart, charts, onClose, onSettingsUpdate, av
     }
   }, [chart]);
 
-  // Анимация появления/исчезновения панели
+  // показ/скрытие панели с анимацией
   useEffect(() => {
     if (show) {
       setIsVisible(true);
     } else {
-      // Задержка для анимации исчезновения
+      // ждём конца анимации, потом убираем из DOM
       const timer = setTimeout(() => setIsVisible(false), 300);
       return () => clearTimeout(timer);
     }

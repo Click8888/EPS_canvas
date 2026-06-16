@@ -29,7 +29,7 @@ func main() {
     // Настройка роутера
     r := gin.Default()
 
-    // Настройка CORS - исправленная версия
+    // Настройка CORS
     r.Use(cors.New(cors.Config{
         AllowOrigins:     []string{"*"},
         AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
@@ -67,7 +67,7 @@ func main() {
         api.GET("/connection-status", routes.GetConnectionStatus)
     }
 
-    // Выведите все зарегистрированные маршруты
+    // все зарегистрированные маршруты
     fmt.Println("Registered routes:")
     for _, route := range r.Routes() {
         fmt.Printf("%-6s %s\n", route.Method, route.Path)

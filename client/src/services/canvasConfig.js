@@ -1,19 +1,12 @@
-// Сохранение/загрузка конфигурации рабочего полотна в .json-файл.
-// Сохраняем ТОЛЬКО настройки (раскладку, описания линий, параметры автообновления);
-// сами точки данных не сохраняем — они подгружаются заново из БД при импорте.
-
 const CONFIG_TYPE = 'eps-canvas-config';
 const CONFIG_VERSION = 1;
 
-// Убирает из линии тяжёлый массив точек, оставляя только её конфигурацию.
 const stripLineData = (line) => {
   const { data, ...config } = line;
   return config;
 };
 
-// Готовит один узел к сохранению: вырезает данные точек из линий, убирает
-// транзиентные поля и принудительно выключает автообновление в updateConfig
-// (чтобы импорт не запускал опрос БД сам по себе).
+
 const serializeNode = (node) => {
   const {
     lines,
@@ -37,7 +30,7 @@ const serializeNode = (node) => {
   return out;
 };
 
-// Собирает объект конфигурации полотна из текущего состояния React Flow.
+// Собирает объект конфигурации полотна из текущего состояния React Flow
 export const serializeCanvas = (nodes, edges, nodeCounter) => ({
   type: CONFIG_TYPE,
   version: CONFIG_VERSION,

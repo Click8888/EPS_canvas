@@ -1,20 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-// Управляемая ширина боковой колонки легенды с перетаскиванием разделителя.
-//   containerRef — внешний flex-контейнер (область графика + легенда);
-//   totalWidth   — логическая ширина этого контейнера (для клампа и учёта зума
-//                  полотна React Flow);
-//   defaultWidth — авто-ширина по умолчанию.
-// Возвращает [legendWidth, startResize]: ширину (с клампом) и обработчик
-// onMouseDown для разделителя.
+// ширина боковой колонки легенды, тянется за разделитель
+// возвращает [ширина, обработчик onMouseDown]
 export function useResizableLegend(containerRef, totalWidth, defaultWidth) {
   const [width, setWidth] = useState(defaultWidth);
   const userSetRef = useRef(false); // пользователь уже тянул разделитель?
   const totalRef = useRef(totalWidth);
   totalRef.current = totalWidth;
 
-  // Пока пользователь не трогал разделитель — следуем за авто-дефолтом
-  // (например, при ресайзе ноды). После ручной правки ширина фиксируется.
+  // пока разделитель не трогали, следуем за дефолтной шириной
   useEffect(() => {
     if (!userSetRef.current) setWidth(defaultWidth);
   }, [defaultWidth]);
@@ -35,8 +29,7 @@ export function useResizableLegend(containerRef, totalWidth, defaultWidth) {
       if (!el) return;
       const r = el.getBoundingClientRect();
       const total = totalRef.current;
-      // Учитываем зум полотна React Flow: rect масштабирован, а ширина легенды —
-      // в логических px ноды.
+      // поправка на зум полотна
       const zoom = total && r.width ? r.width / total : 1;
       setWidth(clampWidth((r.right - ev.clientX) / zoom));
     };

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import * as echarts from 'echarts/core';
 import { useTheme } from './ThemeContext';
 import {
@@ -17,7 +17,7 @@ echarts.use([
   CanvasRenderer
 ]);
 
-// Функция интерполяции цветов
+// hex -> rgb
 const hexToRgb = (hex) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? {
@@ -38,14 +38,14 @@ const interpolateColor = (color1, color2, t) => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
-// Функция получения цвета с приоритетом пользовательского цвета
+// цвет вектора: свой, иначе по величине
 const getVectorColor = (vector, maxMagnitude) => {
-  // Если задан пользовательский цвет, используем его
+  // если задан свой цвет, берём его
   if (vector.color && vector.color !== '#4dabf7') {
     return vector.color;
   }
   
-  // Иначе вычисляем цвет на основе величины
+  // иначе считаем цвет по величине
   if (maxMagnitude === 0) return '#4dabf7';
   const ratio = Math.min(vector.magnitude / maxMagnitude, 1);
   
@@ -55,13 +55,13 @@ const getVectorColor = (vector, maxMagnitude) => {
   else return interpolateColor('#ff8c00', '#ff6b6b', (ratio - 0.75) / 0.25);
 };
 
-// Компонент легенды
+// легенда
 const Legend = ({ vectors, maxMagnitude, isDark }) => {
   const dpr = window.devicePixelRatio || 1;
   const isHighDPI = dpr >= 2;
 
   const legendStyles = {
-    // Боковая колонка справа (раньше — плавающий оверлей в углу).
+    // боковая колонка справа
     position: 'relative',
     width: '100%',
     height: '100%',
@@ -202,17 +202,16 @@ const RadialChart = ({
 }) => {
   const { isDark } = useTheme();
   const chartRef = useRef(null);
-  const [chartInstance, setChartInstance] = useState(null);
-  const [option, setOption] = useState(null);
+  const chartBoxRef = useRef(null); // контейнер канваса — отслеживаем его ресайз
   const dpr = window.devicePixelRatio || 1;
   const isHighDPI = dpr >= 2;
   
-  // Сохраняем векторы в ref для доступа в renderItem и tooltip
+  // векторы в ref, чтобы читать их в renderItem и tooltip
   const vectorsRef = useRef([]);
   const maxMagRef = useRef(100);
-  const containerRef = useRef(null); // внешний flex-контейнер (график + легенда)
+  const containerRef = useRef(null); // контейнер графика и легенды
 
-  // Преобразование данных линий в векторы
+  // из линий делаем векторы
   const processLinesToVectors = useCallback(() => {
     if (!lines || lines.length === 0) return [];
     
@@ -239,10 +238,11 @@ const RadialChart = ({
         vectors.push({
           id: line.id,
           name: line.name,
-          color: line.color || '#4dabf7', // Сохраняем пользовательский цвет
+          color: line.color || '#4dabf7', // свой цвет линии
           angle: angle % 360,
           magnitude: Math.abs(magnitude),
-          lineWidth: line.lineWidth, // Настраиваемая толщина стрелки (из сайдбара)
+          lineWidth: line.lineWidth, // толщина стрелки из сайдбара
+          arrowScale: line.arrowScale, // масштаб наконечника из сайдбара
         });
       }
     });
@@ -250,7 +250,7 @@ const RadialChart = ({
     return vectors;
   }, [lines]);
 
-  // Вычисление максимальной длины с запасом
+  // макс. длина с запасом
   const getMaxMagnitude = useCallback((vectors) => {
     if (vectors.length === 0) return 100;
     
@@ -260,12 +260,12 @@ const RadialChart = ({
     return maxMagnitude * 1.25;
   }, []);
 
-  // Генерация опций графика
+  // собираем option для echarts
   const generateOption = useCallback(() => {
     const vectors = processLinesToVectors();
     const maxMag = getMaxMagnitude(vectors);
     
-    // Сохраняем в ref для использования в tooltip и renderItem
+    // в ref для tooltip и renderItem
     vectorsRef.current = vectors;
     maxMagRef.current = maxMag;
     
@@ -351,9 +351,9 @@ const RadialChart = ({
       } : { show: false },
     };
 
-    // Создаем серии для каждого вектора
+    // серия на каждый вектор
     const series = vectors.map((vector, index) => {
-      // Используем getVectorColor для получения цвета (с приоритетом пользовательского)
+      // цвет через getVectorColor
       const color = getVectorColor(vector, maxMag);
       
       return {
@@ -382,9 +382,35 @@ const RadialChart = ({
           
           const endX = center[0] + clampedLength * Math.cos(angleRad);
           const endY = center[1] - clampedLength * Math.sin(angleRad);
-          
-          const arrowSize = isHighDPI ? 8 : 10;
-          
+
+          // толщина древка и пользовательский масштаб наконечника
+          const lw = vector.lineWidth ?? (isHighDPI ? 2.5 : 3);
+          const arrowScale = vector.arrowScale ?? 1;
+
+          // острый (sleek) наконечник, пропорциональный толщине линии
+          let headLength = Math.max(lw * 3.5, 7) * arrowScale;
+          const headHalfW = Math.max(lw * 1.6, 3.5) * arrowScale;
+          // защита для коротких векторов, чтобы головка не «съела» древко
+          headLength = Math.min(headLength, clampedLength * 0.9);
+
+          // единичный вектор направления (экранные координаты, y инвертирован) и перпендикуляр
+          const ux = Math.cos(angleRad);
+          const uy = -Math.sin(angleRad);
+          const px = -uy;
+          const py = ux;
+
+          // основание головки и её крылья
+          const baseX = endX - headLength * ux;
+          const baseY = endY - headLength * uy;
+          const leftX = baseX + headHalfW * px;
+          const leftY = baseY + headHalfW * py;
+          const rightX = baseX - headHalfW * px;
+          const rightY = baseY - headHalfW * py;
+
+          // древко заканчивается внутри головки — убирает шов и protrusion у кончика
+          const shaftX = endX - headLength * 0.85 * ux;
+          const shaftY = endY - headLength * 0.85 * uy;
+
           return {
             type: 'group',
             children: [
@@ -393,18 +419,17 @@ const RadialChart = ({
                 shape: {
                   x1: center[0],
                   y1: center[1],
-                  x2: endX,
-                  y2: endY
+                  x2: shaftX,
+                  y2: shaftY
                 },
                 style: {
                   stroke: color,
-                  lineWidth: vector.lineWidth ?? (isHighDPI ? 2.5 : 3),
-                  opacity: 0.9
+                  lineWidth: lw,
+                  lineCap: 'round'
                 },
                 emphasis: {
                   style: {
-                    lineWidth: (vector.lineWidth ?? (isHighDPI ? 2.5 : 3)) + 1.5,
-                    opacity: 1,
+                    lineWidth: lw + 1.5,
                     shadowBlur: isHighDPI ? 4 : 8,
                     shadowColor: color
                   }
@@ -415,16 +440,15 @@ const RadialChart = ({
                 shape: {
                   points: [
                     [endX, endY],
-                    [endX - arrowSize * Math.cos(angleRad - 0.5), endY + arrowSize * Math.sin(angleRad - 0.5)],
-                    [endX - arrowSize * Math.cos(angleRad + 0.5), endY + arrowSize * Math.sin(angleRad + 0.5)]
+                    [leftX, leftY],
+                    [rightX, rightY]
                   ]
                 },
                 style: {
                   fill: color,
                   stroke: color,
                   lineWidth: isHighDPI ? 0.5 : 1,
-                  shadowBlur: isHighDPI ? 2 : 4,
-                  shadowColor: color
+                  lineJoin: 'round'
                 }
               }
             ]
@@ -439,49 +463,42 @@ const RadialChart = ({
     };
   }, [lines, processLinesToVectors, getMaxMagnitude, isDark, isAutoUpdate, isHighDPI]);
 
-  // Инициализация графика
+  // option считается напрямую из данных; инстансом ECharts владеет echarts-for-react.
+  // Раньше инстанс хранился в state и вручную dispose/resize — но echarts-for-react
+  // мог пересоздать инстанс (например, при смене devicePixelRatio), и сохранённая
+  // ссылка устаревала: resize() уходил на уже уничтоженный инстанс, заваливая
+  // консоль предупреждениями "[ECharts] Instance ... has been disposed" на каждом
+  // тике автообновления.
+  const option = useMemo(() => generateOption(), [generateOption]);
+
+  // Стабильный opts: новый объектный литерал на каждый рендер заставлял
+  // echarts-for-react пересоздавать инстанс.
+  const echartsOpts = useMemo(() => ({
+    renderer: 'canvas',
+    // канвас в повышенной плотности пикселей, чтобы было чётче
+    devicePixelRatio: Math.min(dpr * 2, 4)
+  }), [dpr]);
+
+  // Ресайз графика при изменении размеров контейнера (узел/легенда).
+  // Живой инстанс берём из рефа на каждый вызов и проверяем isDisposed(),
+  // чтобы никогда не дёргать уничтоженный инстанс.
   useEffect(() => {
-    if (chartRef.current && !chartInstance) {
-      try {
-        const instance = chartRef.current.getEchartsInstance();
-        if (instance) {
-          setChartInstance(instance);
-          instance.resize();
-        }
-      } catch (error) {
-        console.error('Ошибка инициализации радиального графика:', error);
-      }
-    }
+    const el = chartBoxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
 
-    return () => {
-      if (chartInstance && typeof chartInstance.dispose === 'function') {
-        try {
-          chartInstance.dispose();
-        } catch (error) {
-          console.error('Ошибка при очистке:', error);
-        }
-      }
-    };
-  }, [chartInstance]);
+    const ro = new ResizeObserver(() => {
+      const inst = chartRef.current?.getEchartsInstance?.();
+      if (inst && !inst.isDisposed?.()) inst.resize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  // Обновление графика при изменении данных
-  useEffect(() => {
-    if (!chartInstance) return;
-    
-    const newOption = generateOption();
-    setOption(newOption);
-    
-    if (chartInstance.resize) {
-      chartInstance.resize();
-    }
-  }, [lines, chartInstance, generateOption]);
-
-  // Получаем векторы для легенды
+  // векторы для легенды
   const vectors = processLinesToVectors();
   const maxMag = getMaxMagnitude(vectors);
 
-  // Авто-ширина боковой колонки легенды (~28%, [220,360]px) — стартовое значение;
-  // дальше пользователь может менять её, перетаскивая разделитель.
+  // стартовая ширина легенды (~28%, 220..360px), дальше тянется мышью
   const totalW = typeof width === 'number' ? width : null;
   const defaultLegendWidth = totalW ? Math.min(360, Math.max(220, Math.round(totalW * 0.28))) : 280;
   const [legendWidth, startLegendResize] = useResizableLegend(containerRef, totalW, defaultLegendWidth);
@@ -495,19 +512,14 @@ const RadialChart = ({
       borderRadius: '12px',
       overflow: 'hidden'
     }}>
-      <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative' }}>
+      <div ref={chartBoxRef} style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative' }}>
         <ReactECharts
           ref={chartRef}
-          option={option || {}}
+          option={option}
           notMerge={true}
           lazyUpdate={false}
           style={{ width: '100%', height: '100%' }}
-          opts={{
-            renderer: 'canvas',
-            // Суперсэмплинг: рендерим канвас в повышенной плотности пикселей →
-            // чёткие линии/стрелки и подписи. Та же стратегия, что в линейном графике.
-            devicePixelRatio: Math.min(dpr * 2, 4)
-          }}
+          opts={echartsOpts}
         />
       </div>
 

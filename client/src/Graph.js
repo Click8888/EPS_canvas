@@ -19,7 +19,7 @@ import NotepadNode from './nodes/NotepadNode';
 import { serializeCanvas, downloadConfig, deserializeCanvas } from './services/canvasConfig';
 import { reloadLinesData } from './services/chartData';
 
-// Вспомогательные узлы (DataSourceNode и ProcessorNode можно позже тоже вынести)
+// Вспомогательные узлы
 const DataSourceNode = ({ data, selected, id }) => {
   const [nodeSize, setNodeSize] = useState({ width: data.width || 300, height: data.height || 200 });
   const { setNodes } = useReactFlow();
@@ -179,7 +179,7 @@ const Graph = () => {
   const nodesRef = useRef(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
-  const undoStack = useRef([]); // снимки позиций ДО перемещения
+  const undoStack = useRef([]); // снимки позиций до перемещения
   const redoStack = useRef([]); // снимки для повтора отменённого перемещения
   const dragStartSnapshot = useRef(null);
 

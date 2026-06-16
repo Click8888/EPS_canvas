@@ -40,7 +40,7 @@ const Admin = () => {
     }
   }, []);
 
-  // Выполняет SELECT через /execute-query (сервер разрешает только SELECT) и показывает результат.
+  // Выполняет SELECT через /execute-query (сервер разрешает только SELECT) и показывает результат
   const runSelect = useCallback(async (sql, label) => {
     try {
       setIsLoading(true);

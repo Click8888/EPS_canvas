@@ -1,9 +1,8 @@
-// setupResizeObserver.js – исправленная версия
 (function () {
   const originalConsoleError = console.error;
   const originalConsoleWarn = console.warn;
 
-  // ✅ Глушим ТОЛЬКО безопасные ошибки ResizeObserver loop
+  // Глушим только безопасные ошибки ResizeObserver loop
   console.error = function (...args) {
     const text = args.join(' ').toLowerCase();
     if (
@@ -12,7 +11,7 @@
     ) {
       return; // Эти ошибки безопасны и не влияют на работу
     }
-    // ✅ НЕ глушим disposed и другие ошибки — они нужны для отладки
+    // не глушим disposed и другие ошибки — они нужны для отладки
     originalConsoleError.apply(console, args);
   };
 
@@ -24,7 +23,7 @@
     ) {
       return;
     }
-    // ✅ Показываем все остальные предупреждения
+    // Показываем все остальные предупреждения
     originalConsoleWarn.apply(console, args);
   };
 
@@ -109,5 +108,5 @@
     }
   }
 
-  console.log('🚀 ResizeObserver errors completely suppressed (safe wrapper applied)');
+  console.log('ResizeObserver errors completely suppressed (safe wrapper applied)');
 })();

@@ -22,7 +22,7 @@ const DataSelectionPanel = ({
   const panelRef = useRef(null);
   const resizeHandleRef = useRef(null);
 
-  // Загрузка выбранных параметров для текущего графика
+  // берём уже выбранные параметры этого графика
   useEffect(() => {
     if (selectedChartId) {
       const chart = charts.find(c => c.id === normalizeId(selectedChartId));

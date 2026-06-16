@@ -20,7 +20,7 @@ type Config struct {
 var (
 	DB            *gorm.DB
 	currentConfig Config
-	mu            sync.RWMutex // защита от гонки при переподключении
+	mu            sync.RWMutex
 )
 
 func InitDB(cfg Config) error {
@@ -43,7 +43,7 @@ func initDB(cfg Config) error {
 		return fmt.Errorf("не удалось открыть соединение: %w", err)
 	}
 
-	// Проверяем реальную связь с сервером
+	// проверяем реальную связь с сервером
 	sqlDB, err := db.DB()
 	if err != nil {
 		return fmt.Errorf("не удалось получить sql.DB: %w", err)
@@ -58,7 +58,6 @@ func initDB(cfg Config) error {
 }
 
 // Reconnect — закрывает старое подключение и открывает новое.
-// Потокобезопасно: во время переключения все остальные запросы ждут.
 func Reconnect(cfg Config) error {
 	mu.Lock()
 	defer mu.Unlock()

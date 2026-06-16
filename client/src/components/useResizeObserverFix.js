@@ -2,17 +2,17 @@ import { useEffect } from 'react';
 
 export const useResizeObserverFix = () => {
   useEffect(() => {
-    // Сохраняем оригинальный ResizeObserver
+    // сохраняем оригинал ResizeObserver
     const OriginalResizeObserver = window.ResizeObserver;
     
-    // Создаем обертку для подавления ошибок
+    // обёртка, чтобы гасить ошибки resize
     window.ResizeObserver = class SafeResizeObserver extends OriginalResizeObserver {
       constructor(callback) {
         const safeCallback = (entries, observer) => {
           try {
             callback(entries, observer);
           } catch (error) {
-            // Игнорируем ResizeObserver ошибки
+            // ошибки resize не логируем
             if (!error.message?.includes('ResizeObserver')) {
               console.error(error);
             }

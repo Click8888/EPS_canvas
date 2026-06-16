@@ -22,11 +22,11 @@ echarts.use([
 ]);
 
 
-// Функция для форматирования времени в формат ГГГГ-ММ-ДД ЧЧ:ММ:СС.мс
+// время -> строка 'ГГГГ-ММ-ДД ЧЧ:ММ:СС.мс'
 const formatTime = (timeValue) => {
   if (timeValue === undefined || timeValue === null) return '';
   
-  // Если время в секундах (число меньше типичного timestamp)
+  // время в секундах (меньше типичного timestamp)
   if (typeof timeValue === 'number' && timeValue < 1000000000) {
     const hours = Math.floor(timeValue / 3600);
     const minutes = Math.floor((timeValue % 3600) / 60);
@@ -35,9 +35,9 @@ const formatTime = (timeValue) => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
   }
   
-  // Если время в секундах (timestamp)
+  // timestamp в секундах
   if (typeof timeValue === 'number' && timeValue > 1000000000) {
-    const date = new Date(timeValue * 1000); // Конвертируем секунды в миллисекунды
+    const date = new Date(timeValue * 1000); // секунды -> мс
     const year = date.getFullYear();
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
@@ -49,9 +49,9 @@ const formatTime = (timeValue) => {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
   }
   
-  // Если время в виде строки
+  // строка
   if (typeof timeValue === 'string') {
-    // Пробуем преобразовать в Date (для полных дат)
+    // пробуем как Date (полная дата)
     const date = new Date(timeValue);
     if (!isNaN(date.getTime())) {
       const year = date.getFullYear();
@@ -65,7 +65,7 @@ const formatTime = (timeValue) => {
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
     }
     
-    // Пробуем распарсить строку времени (только время суток)
+    // иначе парсим время суток
     const timeMatch = timeValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
     if (timeMatch) {
       const hours = parseInt(timeMatch[1]) || 0;
@@ -77,7 +77,7 @@ const formatTime = (timeValue) => {
     }
   }
   
-  // Если это объект Date
+  // объект Date
   if (timeValue instanceof Date) {
     const year = timeValue.getFullYear();
     const month = (timeValue.getMonth() + 1).toString().padStart(2, '0');
@@ -93,11 +93,11 @@ const formatTime = (timeValue) => {
   return String(timeValue);
 };
 
-// Функция для форматирования только времени (без даты) для оси X
+// только время (без даты) для оси X
 const formatTimeOnly = (timeValue) => {
   if (timeValue === undefined || timeValue === null) return '';
   
-  // Если время в секундах (число меньше типичного timestamp)
+  // время в секундах (меньше типичного timestamp)
   if (typeof timeValue === 'number' && timeValue < 1000000000) {
     const hours = Math.floor(timeValue / 3600);
     const minutes = Math.floor((timeValue % 3600) / 60);
@@ -107,7 +107,7 @@ const formatTimeOnly = (timeValue) => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
   }
   
-  // Если timestamp в секундах - извлекаем только время
+  // timestamp в секундах, берём только время
   if (typeof timeValue === 'number' && timeValue > 1000000000) {
     const date = new Date(timeValue * 1000);
     const hours = date.getHours().toString().padStart(2, '0');
@@ -118,7 +118,7 @@ const formatTimeOnly = (timeValue) => {
     return `${hours}:${minutes}:${seconds}.${milliseconds}`;
   }
   
-  // Если строка - пытаемся извлечь время
+  // строка, вытаскиваем время
   if (typeof timeValue === 'string') {
     const timeMatch = timeValue.match(/(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?/);
     if (timeMatch) {
@@ -131,7 +131,7 @@ const formatTimeOnly = (timeValue) => {
     }
   }
   
-  // Если объект Date - извлекаем только время
+  // объект Date, берём только время
   if (timeValue instanceof Date) {
     const hours = timeValue.getHours().toString().padStart(2, '0');
     const minutes = timeValue.getMinutes().toString().padStart(2, '0');
@@ -144,20 +144,20 @@ const formatTimeOnly = (timeValue) => {
   return String(timeValue);
 };
 
-// Функция для преобразования времени в секунды (для числовой оси)
+// время -> секунды (для числовой оси)
 const convertTimeToSeconds = (timeValue) => {
-  // Если уже число в секундах (относительное время)
+  // уже секунды (относительное время)
   if (typeof timeValue === 'number' && timeValue < 1000000000) {
     return timeValue;
   }
   
-  // Если timestamp в секундах
+  // timestamp в секундах
   if (typeof timeValue === 'number' && timeValue > 1000000000) {
     return timeValue;
   }
   
   if (typeof timeValue === 'string') {
-  // СНАЧАЛА проверяем полную дату (приоритет!)
+  // сначала полная дата
   const fullDateMatch = timeValue.match(/\d{4}-\d{2}-\d{2}/);
   if (fullDateMatch) {
     const date = new Date(timeValue);
@@ -166,7 +166,7 @@ const convertTimeToSeconds = (timeValue) => {
     }
   }
   
-  // ПОТОМ проверяем формат HH:MM:SS (только для времени без даты)
+  // потом формат HH:MM:SS
   const timeMatch = timeValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
   if (timeMatch) {
     const hours = parseInt(timeMatch[1], 10) || 0;
@@ -175,7 +175,7 @@ const convertTimeToSeconds = (timeValue) => {
     
     let milliseconds = 0;
     if (timeMatch[4]) {
-      // Правильная обработка миллисекунд
+      // миллисекунды
       const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
       milliseconds = parseInt(msString, 10) / 1000;
     }
@@ -183,7 +183,7 @@ const convertTimeToSeconds = (timeValue) => {
     return hours * 3600 + minutes * 60 + seconds + milliseconds;
   }
   
-  // Иначе пытаемся распарсить как число
+  // иначе парсим как число
   const parsed = parseFloat(timeValue);
   return isNaN(parsed) ? 0 : parsed;
 }
@@ -199,8 +199,7 @@ const defaultOption = {
   animation: false,
   animationDuration: 0,
   animationEasing: 'linear',
-  // Глобальный шрифт всего текста на канвасе (подписи осей, тултип) — единый
-  // чёткий стек, согласованный с радиальным графиком.
+  // общий шрифт для всего текста на канвасе
   textStyle: {
     fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
   },
@@ -227,16 +226,16 @@ const defaultOption = {
       return `Время: ${formattedTime}<br/>Значение: ${parseFloat(value.toFixed(6)).toString()}`; //return parseFloat(params.value.toFixed(6)).toString();
     }
   },
-  // Добавляем настройки для axisPointer на осях
+  // axisPointer на осях
   axisPointer: {
     link: { xAxisIndex: 'all' },
     label: {
       formatter: function(params) {
-        // Применяем форматирование времени только для оси X
+        // формат времени только для оси X
         if (params.axisDimension === 'x') {
           return formatTimeOnly(params.value);
         }
-        // Для оси Y показываем обычное числовое значение
+        // для оси Y обычное число
         return parseFloat(params.value.toFixed(6)).toString();
       }
     }
@@ -278,7 +277,7 @@ const defaultOption = {
     animation: false,
     axisLabel: {
       formatter: function(value) {
-        // Всегда 6 значащих цифр (6 знаков в целом, а не после запятой)
+        // 6 значащих цифр
         return Number(value).toPrecision(6);
       }
     },
@@ -339,8 +338,7 @@ const defaultOption = {
   }
 };
 
-// Multi-line форматтер тултипа. Определён один раз на уровне модуля,
-// чтобы не пересоздавать функцию на каждом обновлении данных.
+// форматтер тултипа, один раз на уровне модуля
 const multiLineTooltipFormatter = (params) => {
   if (!params || params.length === 0) return '';
   const formattedTime = formatTimeOnly(params[0].value[0]);
@@ -353,13 +351,13 @@ const multiLineTooltipFormatter = (params) => {
   return tooltipContent;
 };
 
-// Форматирование значения легенды (короткое, без лишних нулей).
+// значение для легенды, без лишних нулей
 const formatLegendValue = (v) => {
   if (v === undefined || v === null || isNaN(v)) return '—';
   return parseFloat(Number(v).toFixed(6)).toString();
 };
 
-// Боковая легенда линейного графика: список линий (цвет + имя + последнее значение).
+// боковая легенда: цвет, имя, последнее значение линий
 const LinearLegend = ({ entries, isDark }) => {
   const panelStyle = {
     width: '100%',
@@ -462,44 +460,39 @@ const Chart = ({
   height = '600px',
   isAutoUpdate = false,
   pointLimit = 200,
-  // Режим выбора окна и границы абсолютного диапазона (epoch-секунды).
-  // 'points'/'relative' — ось X тянется за данными; 'absolute' — фиксируем [start, end].
+  // режим окна и границы диапазона (epoch-сек): points/relative тянут ось за данными, absolute фиксирует [start, end]
   rangeMode = 'points',
   rangeStartSec = null,
   rangeEndSec = null,
 }) => {
   const { isDark } = useTheme();
   const chartRef = useRef(null);
-  const containerRef = useRef(null); // внешний flex-контейнер (график + легенда)
+  const containerRef = useRef(null); // контейнер графика и легенды
   const chartInstanceRef = useRef(null);
   const [chartInstance, setChartInstance] = useState(null);
   const currentXRangeRef = useRef(null);
-  // Состояние для отслеживания взаимодействия пользователя с графиком
+  // взаимодействует ли пользователь с графиком
   const [userInteracting, setUserInteracting] = useState(false);
-  const userInteractingRef = useRef(false); // Ref для использования в обработчиках событий
-  const [, setCurrentXRange] = useState(null); // Диапазон X после зума (значение хранится в currentXRangeRef)
+  const userInteractingRef = useRef(false); // для обработчиков событий
+  const [, setCurrentXRange] = useState(null); // диапазон X после зума
   const prevLinesDataRef = useRef(null);
-  const prevSeriesCountRef = useRef(0); // Сколько серий было в прошлый раз (для очистки удалённых линий)
+  const prevSeriesCountRef = useRef(0); // сколько серий было в прошлый раз
 
-  // ДОБАВИТЬ: Получаем devicePixelRatio для высокого качества
+  // devicePixelRatio для чёткости
   const dpr = window.devicePixelRatio || 1;
 
-  // Преобразуем данные одной линии в формат ECharts
+  // данные одной линии в формат ECharts
 const formatLineDataForECharts = (data) => {
   if (!data || !Array.isArray(data)) return [];
 
-  // Ограничиваем отображение последними pointLimit точками — только в режиме точек.
-  // В режимах диапазона окно по времени само задаёт выборку, и резать по числу
-  // точек нельзя (иначе вместо всего окна показались бы только последние N точек).
+  // в режиме точек режем по pointLimit; в режимах диапазона выборку задаёт окно по времени
   const limit = (rangeMode === 'points' && pointLimit > 0) ? pointLimit : data.length;
   const limitedData = data.length > limit ? data.slice(-limit) : data;
   const formattedData = [];
 
   limitedData.forEach(item => {
     if (item && typeof item === 'object') {
-      // item.time уже содержит числовые секунды (вычислены при приёме данных) —
-      // используем их напрямую, не прогоняя regex по каждой точке каждый кадр.
-      // Строку (originalTime) парсим только как fallback для старого формата.
+      // item.time обычно уже в секундах; originalTime парсим только как fallback
       let timeInSeconds;
       if (typeof item.time === 'number') {
         timeInSeconds = item.time;
@@ -511,7 +504,7 @@ const formatLineDataForECharts = (data) => {
         return;
       }
 
-      // Извлекаем значение
+      // значение
       if (item.value !== undefined) {
         formattedData.push([timeInSeconds, item.value]);
       }
@@ -521,10 +514,10 @@ const formatLineDataForECharts = (data) => {
   return formattedData;
 };
 
-// Преобразуем все линии в формат ECharts
+// все линии в формат ECharts
 const formatAllLinesForECharts = (lines) => {
   if (!lines || !Array.isArray(lines) || lines.length === 0) {
-    // Fallback на старый формат для обратной совместимости
+    // fallback на старый формат
     if (chartData && Array.isArray(chartData)) {
       return [{
         name: 'Данные',
@@ -544,10 +537,7 @@ const formatAllLinesForECharts = (lines) => {
   }));
 };
 
-// Диапазон Y по уже отформатированным данным ([timeInSeconds, value]).
-// Один проход, без regex и parseFloat — числа уже готовы.
-// Используется в горячем пути обновления вместо calculateYRange(lines, ...),
-// который заново парсил время по каждой точке.
+// диапазон Y по готовым данным [time, value], один проход
 const calcYRangeFromFormatted = (formattedLines, xMin, xMax) => {
   let minY = Infinity;
   let maxY = -Infinity;
@@ -574,7 +564,7 @@ const calcYRangeFromFormatted = (formattedLines, xMin, xMax) => {
   return { min: minY - padding, max: maxY + padding };
 };
 
-// Диапазон X по отформатированным данным с 10% отступа (для авто-режима).
+// диапазон X по данным с отступом 10%
 const calcXRangeFromFormatted = (formattedLines) => {
   let minX = Infinity;
   let maxX = -Infinity;
@@ -592,28 +582,20 @@ const calcXRangeFromFormatted = (formattedLines) => {
   return { min: minX - range * 0.1, max: maxX + range * 0.1 };
 };
 
-  // Колбэк готовности графика. echarts-for-react создаёт инстанс асинхронно
-  // (временный → дожидается 'finished' → пересоздаёт с финальными размерами),
-  // поэтому синхронный getEchartsInstance() в useEffect мог вернуть уже
-  // уничтоженный временный инстанс. onChartReady вызывается с финальным.
+  // берём готовый инстанс из onChartReady (в useEffect он мог быть ещё временным)
   const handleChartReady = useCallback((instance) => {
     chartInstanceRef.current = instance;
     setChartInstance(instance);
   }, []);
 
-  // Очистка ссылки при размонтировании (сам инстанс диспозит echarts-for-react).
+  // при размонтировании чистим ссылку
   useEffect(() => {
     return () => {
       chartInstanceRef.current = null;
     };
   }, []);
 
-  // Tooltip и интерактивность зависят от режима автообновления, но не от данных.
-  // Ставим отдельным merge-апдейтом, чтобы горячий путь обновления данных
-  // не пересобирал tooltip/форматтеры на каждом тике.
-  // Во время автообновления полностью блокируем интеракции (тултип + зум/панорама),
-  // после остановки — возвращаем. show:true обязательно в ветке «выключено», иначе
-  // прежнее show:false не сбрасывается при merge и тултип остаётся скрытым.
+  // tooltip и зум зависят от автообновления, ставим отдельным merge. в автообновлении интеракции выключены
   useEffect(() => {
     const inst = chartInstanceRef.current;
     if (!inst || inst.isDisposed()) return;
@@ -636,7 +618,7 @@ const calcXRangeFromFormatted = (formattedLines) => {
     }, false);
   }, [chartInstance, isAutoUpdate]);
 
-  // Отслеживание изменений диапазона X при зуме
+  // следим за диапазоном X при зуме
 useEffect(() => {
   if (!chartInstanceRef.current || chartInstanceRef.current.isDisposed()) return;
 
@@ -645,19 +627,19 @@ useEffect(() => {
     const xAxisZoom = params.batch.find(b => b.dataZoomId && b.xAxisIndex !== undefined);
     
     if (xAxisZoom) {
-      // Получаем текущий диапазон X
+      // текущий диапазон X
       const option = chartInstance.getOption();
       if (option && option.xAxis && option.xAxis[0]) {
         let newXRange = null;
         
-        // Сохраняем текущий диапазон X
+        // запоминаем диапазон X
         if (xAxisZoom.startValue !== undefined && xAxisZoom.endValue !== undefined) {
           newXRange = {
             min: xAxisZoom.startValue,
             max: xAxisZoom.endValue
           };
         } else if (xAxisZoom.start !== undefined && xAxisZoom.end !== undefined) {
-          // Если используются проценты, конвертируем в значения
+          // проценты -> значения
           const allData = chartInstance.getOption().series[0].data || [];
           if (allData.length > 0) {
             const startIdx = Math.floor((xAxisZoom.start / 100) * allData.length);
@@ -672,18 +654,18 @@ useEffect(() => {
           }
         }
         
-        //Обновляем currentXRange и ось Y
+        // обновляем currentXRange и ось Y
         if (newXRange) {
           currentXRangeRef.current = newXRange;
           setCurrentXRange(newXRange);
-          // Вычисляем новый диапазон Y для видимых данных (по отформатированным данным)
+          // диапазон Y по видимым данным
           const yRange = calcYRangeFromFormatted(
             formatAllLinesForECharts(lines),
             newXRange.min,
             newXRange.max
           );
 
-          // Обновляем только ось Y (merge, без пересоздания)
+          // обновляем только ось Y
           chartInstance.setOption({
             yAxis: {
               min: yRange.min,
@@ -699,7 +681,7 @@ useEffect(() => {
 chartInstanceRef.current.on('dataZoom', handleDataZoomEvent);
 
   return () => {
-    // ✅ Проверяем при очистке
+    // проверяем при очистке
     if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
       chartInstanceRef.current.off('dataZoom', handleDataZoomEvent);
     }
@@ -707,13 +689,13 @@ chartInstanceRef.current.on('dataZoom', handleDataZoomEvent);
 }, [chartInstance]);
 
 
-  // Отслеживание взаимодействия пользователя с графиком
+  // следим за взаимодействием пользователя
   useEffect(() => {
     if (!chartInstanceRef.current || chartInstanceRef.current.isDisposed()) return;
 
-    // Обработчик события dataZoom (когда пользователь масштабирует или двигает график)
+    // событие dataZoom: пользователь зумит или двигает
     const handleDataZoom = (params) => {
-      // Проверяем, что событие вызвано пользователем, а не программно
+      // только если это действие пользователя
       if (params.batch && params.batch.length > 0) {
         const isUserAction = params.batch[0].start !== undefined || params.batch[0].end !== undefined;
         if (isUserAction) {
@@ -723,19 +705,19 @@ chartInstanceRef.current.on('dataZoom', handleDataZoomEvent);
       }
     };
 
-    // Обработчик события restore (когда пользователь сбрасывает zoom)
+    // событие restore: сброс зума
     const handleRestore = () => {
       userInteractingRef.current = false;
       setUserInteracting(false);
     };
 
-    // Подписываемся на события
+    // подписка на события
     chartInstanceRef.current.on('dataZoom', handleDataZoom);
     chartInstanceRef.current.on('restore', handleRestore);
 
-    // Отписываемся при размонтировании
+    // отписка при размонтировании
     return () => {
-      // ✅ Проверяем при очистке
+      // проверяем при очистке
       if (chartInstanceRef.current && !chartInstanceRef.current.isDisposed()) {
         chartInstanceRef.current.off('dataZoom', handleDataZoom);
         chartInstanceRef.current.off('restore', handleRestore);
@@ -743,11 +725,7 @@ chartInstanceRef.current.on('dataZoom', handleDataZoomEvent);
     };
   }, [chartInstance]);
 
-// При смене лимита точек возвращаемся к авто-следованию за данными: сбрасываем
-// сохранённый пользовательский зум/диапазон X. Иначе новые данные (другое
-// временное окно) могут оказаться вне замороженного диапазона — линия «исчезает»,
-// хотя тултип её находит. Объявлено ДО эффекта обновления данных, чтобы тот в том
-// же коммите прочитал уже сброшенный userInteractingRef.
+// при смене лимита/режима сбрасываем сохранённый зум, чтобы график снова следовал за данными
 useEffect(() => {
   userInteractingRef.current = false;
   setUserInteracting(false);
@@ -755,11 +733,7 @@ useEffect(() => {
   setCurrentXRange(null);
 }, [pointLimit, rangeMode, rangeStartSec, rangeEndSec]);
 
-// При включении автообновления сбрасываем сохранённый пользовательский зум:
-// интеракции в этом режиме заблокированы, поэтому график должен следовать за
-// данными, а не висеть в замороженном диапазоне прошлого зума. Сбрасываем и
-// сигнатуру, чтобы эффект обновления ниже сразу перефитил ось X (а не пропустил
-// тик по неизменной сигнатуре). Объявлено ДО эффекта обновления данных.
+// при включении автообновления тоже сбрасываем зум: интеракции выключены, график следует за данными
 useEffect(() => {
   if (!isAutoUpdate) return;
   userInteractingRef.current = false;
@@ -769,37 +743,30 @@ useEffect(() => {
   prevLinesDataRef.current = null;
 }, [isAutoUpdate]);
 
-// Обновление данных графика.
-// Один инкрементальный setOption: меняем только series.data и границы осей.
-// Статичная конфигурация (оси, grid, dataZoom, tooltip) выставлена один раз
-// и здесь не пересобирается.
+// обновление данных: один setOption на series.data и границы осей, остальное не трогаем
 useEffect(() => {
   const inst = chartInstanceRef.current;
   if (!inst || inst.isDisposed()) return;
 
-  // Дешёвая сигнатура изменений вместо JSON.stringify всего массива точек.
-  // pointLimit и параметры диапазона входят в сигнатуру, чтобы смена режима/окна
-  // сразу перерисовала уже загруженные данные, а не ждала следующего тика автообновления.
+  // лёгкая сигнатура изменений вместо JSON.stringify всех точек
   let sig = `lim:${pointLimit}|rm:${rangeMode}|rs:${rangeStartSec}|re:${rangeEndSec}|`;
   for (let i = 0; i < lines.length; i++) {
     const d = lines[i].data;
     const len = d ? d.length : 0;
     const last = len > 0 ? d[len - 1] : null;
-    // color/lineWidth/symbolSize в сигнатуре — чтобы смена стиля серий сразу
-    // перерисовала график, а не ждала изменения данных (иначе цвет применялся
-    // только после переключения автообновления, сбрасывающего сигнатуру).
+    // стиль (цвет/толщина/точки) тоже в сигнатуре, чтобы смена стиля сразу перерисовала
     sig += `${lines[i].id}:${len}:${last ? last.time : ''}:${lines[i].color}:${lines[i].lineWidth}:${lines[i].symbolSize}|`;
   }
   if (prevLinesDataRef.current === sig) {
-    // Данные не изменились — пропускаем обновление
+    // данные не изменились, пропускаем
     return;
   }
   prevLinesDataRef.current = sig;
 
-  // Форматируем данные всех линий в [timeInSeconds, value] (один проход с конвертацией времени)
+  // форматируем линии в [time, value]
   const formattedLines = formatAllLinesForECharts(lines);
 
-  // Fallback на старый формат chartData
+  // fallback на старый формат chartData
   if (formattedLines.length === 0 && chartData) {
     formattedLines.push({
       name: 'Данные',
@@ -809,11 +776,9 @@ useEffect(() => {
   }
   if (formattedLines.length === 0) return;
 
-  // Когда пользователь взаимодействует с графиком (зум/перемещение) —
-  // сохраняем его диапазон X и считаем Y только по видимому окну.
+  // при взаимодействии держим диапазон X пользователя и считаем Y по видимому окну
   const interacting = userInteractingRef.current;
-  // Абсолютный режим с заданными границами: фиксируем окно [start, end] и
-  // считаем Y по нему (а не по всем данным), пока пользователь не зумит сам.
+  // абсолютный режим: фиксируем окно [start, end] и считаем Y по нему
   const absoluteWindow =
     rangeMode === 'absolute' && rangeStartSec != null && rangeEndSec != null
       ? { min: rangeStartSec, max: rangeEndSec }
@@ -829,7 +794,7 @@ useEffect(() => {
   );
 
   const series = formattedLines.map(line => {
-    // Настраиваемые стили серий (общие для всех серий, задаются в сайдбаре).
+    // стили серий из сайдбара
     const width = line.lineWidth ?? 2.2;
     const symbolSize = line.symbolSize ?? 0;
     const showSymbol = symbolSize > 0;
@@ -848,8 +813,7 @@ useEffect(() => {
     };
   });
 
-  // Если линий стало меньше — добиваем массив пустыми сериями, чтобы при merge
-  // не остались «призрачные» линии от прошлого обновления (без replaceMerge).
+  // если линий стало меньше, добиваем пустыми сериями, иначе при merge останутся старые
   for (let i = series.length; i < prevSeriesCountRef.current; i++) {
     series.push({ type: 'line', data: [] });
   }
@@ -860,9 +824,7 @@ useEffect(() => {
     series
   };
 
-  // Без взаимодействия пользователя задаём ось X. В абсолютном режиме —
-  // фиксированное окно [start, end] (показываем весь диапазон даже при
-  // разреженных данных); иначе ось следует за данными.
+  // без взаимодействия задаём ось X: абсолютный режим фиксирует окно, иначе ось следует за данными
   if (!interacting) {
     if (absoluteWindow) {
       updateOption.xAxis = { min: absoluteWindow.min, max: absoluteWindow.max };
@@ -875,21 +837,19 @@ useEffect(() => {
   }
 
   try {
-    // merge (notMerge=false): меняем только data серий и границы осей,
-    // статичная конфигурация (оси, grid, dataZoom, tooltip) не пересобирается.
+    // merge: меняем только data серий и границы осей
     inst.setOption(updateOption, false, false);
   } catch (error) {
     console.error('Ошибка обновления графика:', error);
   }
 }, [chartData, lines, activeGraphUpdate, chartInstance, pointLimit, isAutoUpdate, rangeMode, rangeStartSec, rangeEndSec]);
 
-  // Авто-ширина боковой колонки легенды (~28%, [220,360]px) — стартовое значение;
-  // дальше пользователь может менять её, перетаскивая разделитель.
+  // стартовая ширина легенды (~28%, 220..360px), дальше тянется мышью
   const totalW = typeof width === 'number' ? width : null;
   const defaultLegendWidth = totalW ? Math.min(360, Math.max(220, Math.round(totalW * 0.28))) : 280;
   const [legendWidth, startLegendResize] = useResizableLegend(containerRef, totalW, defaultLegendWidth);
 
-  // Записи легенды: имя + цвет + последнее значение каждой линии.
+  // записи легенды: имя, цвет, последнее значение
   let legendEntries = [];
   if (lines && lines.length > 0) {
     legendEntries = lines.map((line) => {
@@ -929,8 +889,7 @@ useEffect(() => {
           minWidth: 0,
           height: '100%',
           position: 'relative'
-          // Курсор — crosshair, как в легенде (задаётся в CSS через .chart-canvas-area
-          // с !important, чтобы перебить inline-курсор zrender над канвасом).
+          // курсор crosshair задаётся в CSS (с !important поверх zrender)
         }}
       >
         <ReactECharts
@@ -947,11 +906,7 @@ useEffect(() => {
           }}
           opts={{
             renderer: 'canvas',
-            // Суперсэмплинг как в радиальном графике: рендерим канвас в повышенной
-            // плотности пикселей → чёткие линии и подписи осей. Раньше DPR капали
-            // ради перфоманса; теперь приоритет — чёткость. Перф-буфер: sampling
-            // 'lttb' + animation:false + инкрементальный setOption. Если на слабом
-            // железе при большом лимите точек появится лаг — снизить кап до 3.
+            // канвас в повышенной плотности пикселей, чтобы было чётче (на слабом железе можно снизить кап до 3)
             devicePixelRatio: Math.min(dpr * 2, 4)
           }}
         />
