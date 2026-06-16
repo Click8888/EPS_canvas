@@ -142,6 +142,18 @@ const Sidebar = ({
           tables: tableNames,
           isLoadingParams: false
         }));
+
+        // Заполняем кэш столбцов прямо из метаданных. Иначе селекты выбора
+        // столбцов появлялись только после ручного выбора таблицы в onChange —
+        // и при импорте сохранённого конфига (таблица уже выбрана) выпадающие
+        // списки столбцов оставались пустыми.
+        const columnsByTable = {};
+        metadata.tables.forEach(table => {
+          if (Array.isArray(table.columns) && table.columns.length > 0) {
+            columnsByTable[table.table_name] = table.columns.map(col => col.column_name);
+          }
+        });
+        setTableColumnsCache(prev => ({ ...prev, ...columnsByTable }));
       }
     } catch (err) {
       setChartParams(prev => ({
