@@ -365,16 +365,20 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   }, [updateConfig.pointLimit, updateConfig.rangeMode, updateConfig.relativeValue, updateConfig.relativeUnit]);
 
   // Старт/стоп автообновления: на старте — чистый буфер; на стопе — финальный flush в node.data.
+  // ВАЖНО: зависим только от isAutoUpdate. persistLinesToNode сюда не кладём — он
+  // пересоздаётся при каждом троттл-персисте (меняется data.lines), и тогда эффект
+  // ложно перезапускался бы раз в ~1 с, обнуляя буфер и вызывая мигание графика.
   useEffect(() => {
     if (updateConfig.isAutoUpdate) {
       lastSeenRef.current = {};
       bufferRef.current = {};
       persistAtRef.current = 0;
       setLiveLines(null);
-    } else {
-      persistLinesToNode();
+    } else if (flushRef.current) {
+      flushRef.current(); // финальное сохранение через актуальную версию persist
     }
-  }, [updateConfig.isAutoUpdate, persistLinesToNode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateConfig.isAutoUpdate]);
 
   // Финальное сохранение буфера при размонтировании ноды.
   useEffect(() => () => { if (flushRef.current) flushRef.current(); }, []);
