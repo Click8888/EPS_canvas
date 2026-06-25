@@ -126,6 +126,10 @@ export default function Navbar() {
               <i className="bi bi-gear-fill me-1" />
               Админ-панель
             </a>
+            <a className="btn btn-outline-secondary btn-sm" href="/update" title="Версия и обновление">
+              <i className="bi bi-cloud-arrow-down-fill me-1" />
+              Обновление
+            </a>
             <button
               className="btn btn-outline-secondary btn-sm"
               onClick={toggleTheme}

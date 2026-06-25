@@ -6,6 +6,7 @@ import 'bootstrap-icons/font/bootstrap-icons.css';
 import Navbar from './components/Navbar';
 import Graph from './Graph.js';
 import Admin from './Admin.js';
+import UpdatePanel from './components/UpdatePanel';
 import { ThemeProvider } from './components/ThemeContext';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
 
           <Route path="/" element={<Graph />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/update" element={<UpdatePanel />} />
           <Route path="/graph" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

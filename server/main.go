@@ -65,6 +65,11 @@ func main() {
         //Подключение к БД
         api.POST("/connect", routes.ConnectDB)
         api.GET("/connection-status", routes.GetConnectionStatus)
+
+        //Версия и обновление с GitHub
+        api.GET("/version", routes.GetVersion)
+        api.GET("/check-update", routes.CheckUpdate)
+        api.POST("/update", routes.PerformUpdate)
     }
 
     // все зарегистрированные маршруты
