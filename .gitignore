@@ -11,3 +11,6 @@ server/restart.flag
 
 # Сборочные артефакты
 *.exe
+*.tar.gz
+server/main
+server/main.exe
