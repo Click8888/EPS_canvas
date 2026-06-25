@@ -807,6 +807,9 @@ useEffect(() => {
       connectNulls: false,
       animation: false,
       sampling: 'lttb',
+      // на больших выборках включаем оптимизированный путь отрисовки ECharts
+      large: line.data.length > 2000,
+      largeThreshold: 2000,
       itemStyle: { color: line.color },
       lineStyle: { color: line.color, width },
       data: line.data
@@ -906,8 +909,9 @@ useEffect(() => {
           }}
           opts={{
             renderer: 'canvas',
-            // канвас в повышенной плотности пикселей, чтобы было чётче (на слабом железе можно снизить кап до 3)
-            devicePixelRatio: Math.min(dpr * 2, 4)
+            // Повышенная плотность пикселей для чёткости, но кап = 2: суперсэмплинг x4
+            // при автообновлении больших выборок сильно грузил отрисовку без видимой пользы.
+            devicePixelRatio: Math.min(dpr * 2, 2)
           }}
         />
       </div>

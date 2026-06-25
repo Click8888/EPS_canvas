@@ -5,6 +5,54 @@ import EditableTitle from './EditableTitle';
 import CustomResizer from './CustomResizer';
 import * as pollManager from '../services/pollManager';
 
+// Парсит одну строку БД в точку графика { time(сек), value, originalTime }.
+// Вынесено из applyResults, чтобы применять только к НОВЫМ строкам дельты.
+const parseRow = (row, line) => {
+  const xValue = row[line.xAxis];
+  const rawY = row[line.yAxis];
+  if (xValue == null || rawY == null) return null;
+
+  const yValue = parseFloat(rawY);
+
+  let timeValue;
+  if (xValue instanceof Date) {
+    timeValue = xValue.getTime() / 1000;
+  } else if (typeof xValue === 'string') {
+    const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
+    if (fullDateMatch) {
+      const date = new Date(xValue);
+      timeValue = !isNaN(date.getTime()) ? date.getTime() / 1000 : (parseFloat(xValue) || 0);
+    } else {
+      const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1]) || 0;
+        const minutes = parseInt(timeMatch[2]) || 0;
+        const seconds = parseInt(timeMatch[3]) || 0;
+        let milliseconds = 0;
+        if (timeMatch[4]) {
+          const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
+          milliseconds = parseInt(msString, 10);
+        }
+        timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+      } else {
+        timeValue = parseFloat(xValue) || 0;
+      }
+    }
+  } else {
+    timeValue = parseFloat(xValue) || 0;
+  }
+
+  // originalTime храним сырым: он нужен как граница дельты (WHERE x > '...').
+  return { time: timeValue, value: isNaN(yValue) ? 0 : yValue, originalTime: xValue };
+};
+
+// Длина окна relative в секундах.
+const relativeWindowSeconds = (value, unit) => {
+  const v = Math.max(1, parseInt(value, 10) || 1);
+  const mult = unit === 'hours' ? 3600 : unit === 'minutes' ? 60 : 1;
+  return v * mult;
+};
+
 const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => {
   const { getNode, setNodes } = useReactFlow();
   const [chartData, setChartData] = useState([]);
@@ -40,7 +88,15 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   const [draftRelativeValue, setDraftRelativeValue] = useState(String(updateConfig.relativeValue));
   const [draftRelativeUnit, setDraftRelativeUnit] = useState(updateConfig.relativeUnit);
   const nodeRef = useRef(null);
-  const prevLinesDataRef = useRef(null);
+  // Инкрементальное автообновление:
+  // lastSeenRef — lineId -> сырая метка времени последней полученной точки (граница дельты);
+  // bufferRef   — lineId -> накопленные распарсенные точки линии (окно уже обрезано);
+  // liveLines   — живые данные для графика без прокачки через глобальное состояние React Flow.
+  const lastSeenRef = useRef({});
+  const bufferRef = useRef({});
+  const [liveLines, setLiveLines] = useState(null);
+  const persistAtRef = useRef(0); // время последнего сохранения буфера в node.data (троттл)
+  const flushRef = useRef(null);  // последняя версия функции сохранения (для flush при размонтировании)
 
   // Сохраняет настройки обновления в node.data, чтобы они попали в конфигурацию полотна.
   const persistUpdateConfig = useCallback((cfg) => {
@@ -103,133 +159,166 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
       return v;
     };
 
-    // WHERE-условие по выбранному режиму. xAxis — имя колонки времени линии.
-    const buildWhere = (xAxis) => {
-      if (rangeMode === 'absolute') {
-        const start = toSqlTimestamp(rangeStart);
-        const end = toSqlTimestamp(rangeEnd);
-        if (!start || !end) return null; // диапазон не задан — линию не запрашиваем
-        return `WHERE ${xAxis} BETWEEN '${start}' AND '${end}'`;
-      }
-      if (rangeMode === 'relative') {
-        const value = Math.max(1, parseInt(relativeValue, 10) || 1);
-        const unit = ['seconds', 'minutes', 'hours'].includes(relativeUnit) ? relativeUnit : 'seconds';
-        return `WHERE ${xAxis} >= NOW() - INTERVAL '${value} ${unit}'`;
-      }
-      return '';
-    };
-
-    // В режимах диапазона выборку ограничивает само окно по времени (WHERE),
-    // поэтому LIMIT не ставим — иначе вернулись бы только последние N точек
-    // внутри окна, а не весь заданный диапазон. LIMIT нужен лишь в режиме точек.
-    const tail = rangeMode === 'points'
-      ? `ORDER BY 1 DESC LIMIT ${limit}`
-      : `ORDER BY 1 ASC`;
+    const norm = (sql) => sql.replace(/\s+/g, ' ').trim();
 
     return data.lines
       .filter(line => line.table && line.xAxis && line.yAxis)
       .map(line => {
-        const where = buildWhere(line.xAxis);
-        if (where === null) return null; // absolute без заданного окна
+        // только нужные колонки вместо SELECT *: меньше трафика и парсинга.
+        // ORDER BY 1 = первая выбранная колонка (xAxis), порядок сохраняется.
+        const cols = `${line.xAxis}, ${line.yAxis}`;
+        const lastSeen = lastSeenRef.current[line.id];
+
+        // absolute не оптимизируем дельтой — полная выборка фиксированного окна (как раньше).
+        if (rangeMode === 'absolute') {
+          const start = toSqlTimestamp(rangeStart);
+          const end = toSqlTimestamp(rangeEnd);
+          if (!start || !end) return null; // диапазон не задан — линию не запрашиваем
+          return {
+            key: lineKey(line.id),
+            sql: norm(`SELECT ${cols} FROM ${line.table} WHERE ${line.xAxis} BETWEEN '${start}' AND '${end}' ORDER BY 1 ASC`)
+          };
+        }
+
+        // Дельта: после первой загрузки тянем только строки новее последней виденной.
+        // Левый край окна (points/relative) обрезает буфер на клиенте — см. applyResults.
+        if (lastSeen != null) {
+          return {
+            key: lineKey(line.id),
+            sql: norm(`SELECT ${cols} FROM ${line.table} WHERE ${line.xAxis} > '${lastSeen}' ORDER BY 1 ASC`)
+          };
+        }
+
+        // Первая загрузка (буфер пуст).
+        if (rangeMode === 'relative') {
+          const value = Math.max(1, parseInt(relativeValue, 10) || 1);
+          const unit = ['seconds', 'minutes', 'hours'].includes(relativeUnit) ? relativeUnit : 'seconds';
+          return {
+            key: lineKey(line.id),
+            sql: norm(`SELECT ${cols} FROM ${line.table} WHERE ${line.xAxis} >= NOW() - INTERVAL '${value} ${unit}' ORDER BY 1 ASC`)
+          };
+        }
+        // points: последние N точек.
         return {
           key: lineKey(line.id),
-          sql: `SELECT * FROM ${line.table} ${where} ${tail}`.replace(/\s+/g, ' ').trim()
+          sql: norm(`SELECT ${cols} FROM ${line.table} ORDER BY 1 DESC LIMIT ${limit}`)
         };
       })
       .filter(Boolean);
   }, [data.lines, lineKey, updateConfig]);
 
-  // Принимает строки из пакетного ответа и обновляет данные узла.
+  // Сохраняет накопленный буфер в node.data (чтобы он попал в сохранённую
+  // конфигурацию полотна). Это вызывает реконсиляцию React Flow, поэтому
+  // делается троттлингом (не на каждый тик) и финальным flush при стопе/размонтировании.
+  const persistLinesToNode = useCallback(() => {
+    const hasData = (data.lines || []).some(l => (bufferRef.current[l.id] || []).length > 0);
+    if (!hasData) return;
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === id && node.type === 'linearChartNode') {
+          const updatedLines = (node.data.lines || []).map(l => ({
+            ...l,
+            data: bufferRef.current[l.id] || l.data || []
+          }));
+          return { ...node, data: { ...node.data, lines: updatedLines, updateTimestamp: Date.now() } };
+        }
+        return node;
+      })
+    );
+  }, [id, setNodes, data.lines]);
+
+  // держим последнюю версию flush для вызова при размонтировании
+  useEffect(() => { flushRef.current = persistLinesToNode; });
+
+  // Принимает строки пакетного ответа и ИНКРЕМЕНТАЛЬНО обновляет буфер линий:
+  // парсит только новые строки дельты, дописывает и обрезает окно. Живые данные
+  // отдаются графику через liveLines, минуя глобальное состояние React Flow.
   const applyResults = useCallback((rowsByKey) => {
     if (!data.lines || data.lines.length === 0) return;
+    const { rangeMode, relativeValue, relativeUnit } = updateConfig;
+    const limit = updateConfig.pointLimit > 0 ? updateConfig.pointLimit : 200;
+    const windowSeconds = relativeWindowSeconds(relativeValue, relativeUnit);
 
-    const updatedLines = data.lines.map((line) => {
+    let changed = false;
+
+    data.lines.forEach((line) => {
       if (!line.table || !line.xAxis || !line.yAxis) {
-        return { ...line, data: [] };
+        bufferRef.current[line.id] = [];
+        return;
       }
 
-      const dbData = rowsByKey[lineKey(line.id)] || [];
+      const rows = rowsByKey[lineKey(line.id)];
+      if (!rows) return; // эта линия в этом тике не запрашивалась
 
-      const formattedData = dbData
-        .filter(row => row[line.xAxis] != null && row[line.yAxis] != null)
-        .map((row) => {
-          const yValue = parseFloat(row[line.yAxis]);
-          const xValue = row[line.xAxis];
+      const hadLastSeen = lastSeenRef.current[line.id] != null;
 
-          let timeValue;
-          if (xValue instanceof Date) {
-            timeValue = xValue.getTime() / 1000;
-          } else if (typeof xValue === 'string') {
-            const fullDateMatch = xValue.match(/\d{4}-\d{2}-\d{2}/);
-            if (fullDateMatch) {
-              const date = new Date(xValue);
-              if (!isNaN(date.getTime())) {
-                timeValue = date.getTime() / 1000;
-              } else {
-                timeValue = parseFloat(xValue) || 0;
-              }
-            } else {
-              const timeMatch = xValue.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d+))?$/);
-              if (timeMatch) {
-                const hours = parseInt(timeMatch[1]) || 0;
-                const minutes = parseInt(timeMatch[2]) || 0;
-                const seconds = parseInt(timeMatch[3]) || 0;
-                let milliseconds = 0;
-                if (timeMatch[4]) {
-                  const msString = timeMatch[4].padEnd(3, '0').substring(0, 3);
-                  milliseconds = parseInt(msString, 10);
-                }
-                timeValue = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
-              } else {
-                timeValue = parseFloat(xValue) || 0;
-              }
-            }
-          } else {
-            timeValue = parseFloat(xValue) || 0;
+      // парсим только полученные строки (для дельты это считанные единицы)
+      const parsed = [];
+      for (let i = 0; i < rows.length; i++) {
+        const p = parseRow(rows[i], line);
+        if (p) parsed.push(p);
+      }
+
+      if (!hadLastSeen) {
+        // первая загрузка: сортируем один раз и заменяем буфер
+        parsed.sort((a, b) => a.time - b.time);
+        bufferRef.current[line.id] = parsed;
+        changed = true;
+      } else if (parsed.length > 0) {
+        // дельта уже ASC по запросу — дописываем в конец.
+        const buf = bufferRef.current[line.id] || [];
+        if (buf.length > 0) {
+          // Защита от граничного дубля: если БД из-за потери точности метки вернула
+          // ту же строку, что и последняя в буфере, отбрасываем её (точное совпадение
+          // сырого originalTime — безопасно, различимые строки не теряются).
+          const lastOrig = buf[buf.length - 1].originalTime;
+          let i = 0;
+          while (i < parsed.length && parsed[i].originalTime === lastOrig) i++;
+          const fresh = i > 0 ? parsed.slice(i) : parsed;
+          if (fresh.length > 0) {
+            bufferRef.current[line.id] = buf.concat(fresh);
+            changed = true;
           }
+        } else {
+          bufferRef.current[line.id] = parsed;
+          changed = true;
+        }
+      }
 
-          return {
-            time: timeValue,
-            value: isNaN(yValue) ? 0 : yValue,
-            originalTime: xValue,
-            originalValue: row[line.yAxis],
-            seriesId: line.id,
-            timestamp: Date.now()
-          };
-        });
+      // граница дельты = самая свежая точка буфера; затем обрезаем окно
+      const buf = bufferRef.current[line.id];
+      if (buf && buf.length > 0) {
+        lastSeenRef.current[line.id] = buf[buf.length - 1].originalTime;
 
-      formattedData.sort((a, b) => a.time - b.time);
-      return { ...line, data: formattedData };
+        if (rangeMode === 'points') {
+          if (buf.length > limit) {
+            bufferRef.current[line.id] = buf.slice(buf.length - limit);
+            changed = true;
+          }
+        } else if (rangeMode === 'relative' && windowSeconds > 0) {
+          const cutoff = buf[buf.length - 1].time - windowSeconds;
+          let start = 0;
+          while (start < buf.length && buf[start].time < cutoff) start++;
+          if (start > 0) {
+            bufferRef.current[line.id] = buf.slice(start);
+            changed = true;
+          }
+        }
+      }
     });
 
-    const allDataPoints = updatedLines.flatMap(line => line.data || []);
-    allDataPoints.sort((a, b) => a.time - b.time);
+    if (!changed) return;
 
-    if (allDataPoints.length > 0) {
-      setChartData(allDataPoints);
+    // отдаём график без setNodes: перерисуется только поддерево этой ноды
+    setLiveLines(data.lines.map(line => ({ ...line, data: bufferRef.current[line.id] || [] })));
+
+    // в node.data сохраняем троттлингом (~1 раз/сек)
+    const now = Date.now();
+    if (now - persistAtRef.current > 1000) {
+      persistAtRef.current = now;
+      persistLinesToNode();
     }
-
-    const newLinesSnapshot = JSON.stringify(updatedLines.map(l => ({
-      id: l.id,
-      dataLength: l.data?.length,
-      lastPoint: l.data?.length > 0 ? l.data[l.data.length - 1] : null
-    })));
-
-    if (prevLinesDataRef.current !== newLinesSnapshot) {
-      prevLinesDataRef.current = newLinesSnapshot;
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === id && node.type === 'linearChartNode') {
-            return {
-              ...node,
-              data: { ...node.data, lines: updatedLines, updateTimestamp: Date.now() }
-            };
-          }
-          return node;
-        })
-      );
-    }
-  }, [id, setNodes, data.lines, lineKey]);
+  }, [data.lines, lineKey, updateConfig, persistLinesToNode]);
 
   // Координатор вызывает эти колбэки на каждом тике. Держим их в ref, чтобы
   // подписка не пересоздавалась при каждом обновлении данных (иначе сбрасывался
@@ -247,7 +336,14 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     if (!updateConfig.isAutoUpdate) return;
 
     pollManager.subscribe(id, {
-      getInterval: () => subscriptionRef.current.interval,
+      // На больших выборках не обновляем чаще ~100 мс, даже если задан меньший интервал.
+      getInterval: () => {
+        const base = subscriptionRef.current.interval;
+        let maxLen = 0;
+        const b = bufferRef.current;
+        for (const k in b) { if (b[k] && b[k].length > maxLen) maxLen = b[k].length; }
+        return maxLen > 3000 ? Math.max(base, 100) : base;
+      },
       getQueries: () => subscriptionRef.current.getQueries(),
       onResults: (rows) => subscriptionRef.current.onResults(rows)
     });
@@ -260,6 +356,28 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   useEffect(() => {
     if (updateConfig.isAutoUpdate) pollManager.refresh();
   }, [updateConfig.interval, updateConfig.isAutoUpdate]);
+
+  // Сброс буфера при смене окна/режима — следующий тик сделает чистую полную загрузку.
+  useEffect(() => {
+    lastSeenRef.current = {};
+    bufferRef.current = {};
+    setLiveLines(null);
+  }, [updateConfig.pointLimit, updateConfig.rangeMode, updateConfig.relativeValue, updateConfig.relativeUnit]);
+
+  // Старт/стоп автообновления: на старте — чистый буфер; на стопе — финальный flush в node.data.
+  useEffect(() => {
+    if (updateConfig.isAutoUpdate) {
+      lastSeenRef.current = {};
+      bufferRef.current = {};
+      persistAtRef.current = 0;
+      setLiveLines(null);
+    } else {
+      persistLinesToNode();
+    }
+  }, [updateConfig.isAutoUpdate, persistLinesToNode]);
+
+  // Финальное сохранение буфера при размонтировании ноды.
+  useEffect(() => () => { if (flushRef.current) flushRef.current(); }, []);
 
   const toggleAutoUpdate = useCallback(() => {
     const next = { ...updateConfig, isAutoUpdate: !updateConfig.isAutoUpdate };
@@ -460,7 +578,7 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
       <div className="chart-node-content nodrag">
         <Chart
           chartData={chartData}
-          lines={data.lines}
+          lines={updateConfig.isAutoUpdate && liveLines ? liveLines : data.lines}
           width={nodeSize.width}
           height={nodeSize.height - 50}
           yScaleMode={yScaleMode}
