@@ -1,0 +1,13 @@
+# Зависимости и крупные каталоги — не храним в репозитории
+node_modules/
+**/node_modules/
+go/
+client/build/
+server/tmp/
+
+# Машинно-локальные файлы обновлятора
+.installed_version
+server/restart.flag
+
+# Сборочные артефакты
+*.exe

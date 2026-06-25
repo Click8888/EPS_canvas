@@ -7,16 +7,17 @@ const API = 'http://localhost:8080/api';
 export default function UpdatePanel() {
   const { isDark } = useTheme();
 
-  const [version, setVersion]   = useState(null);   // текущая версия (GET /version)
-  const [check, setCheck]       = useState(null);   // результат проверки (GET /check-update)
-  const [loading, setLoading]   = useState(true);   // первичная загрузка версии
-  const [checking, setChecking] = useState(false);  // идёт проверка
-  const [updating, setUpdating] = useState(false);  // идёт обновление
-  const [phase, setPhase]       = useState('');     // текст состояния обновления
-  const [error, setError]       = useState('');
+  const [installed, setInstalled] = useState(null);  // установленная версия
+  const [known, setKnown]         = useState(false); // известна ли установленная версия
+  const [check, setCheck]         = useState(null);  // результат /check-update
+  const [loading, setLoading]     = useState(true);
+  const [checking, setChecking]   = useState(false);
+  const [updating, setUpdating]   = useState(false);
+  const [phase, setPhase]         = useState('');
+  const [error, setError]         = useState('');
 
-  const cardClass = isDark ? 'card bg-dark text-light border-secondary' : 'card';
-  const codeBg    = isDark ? '#1a1a2e' : '#f8f9fa';
+  const cardClass  = isDark ? 'card bg-dark text-light border-secondary' : 'card';
+  const codeBg     = isDark ? '#1a1a2e' : '#f8f9fa';
   const mutedClass = isDark ? 'text-secondary' : 'text-muted';
 
   useEffect(() => {
@@ -29,7 +30,8 @@ export default function UpdatePanel() {
     try {
       const res  = await fetch(`${API}/version`, { cache: 'no-store' });
       const data = await res.json();
-      setVersion(data);
+      setInstalled(data.installed);
+      setKnown(!!data.installedKnown);
     } catch {
       setError('Не удалось получить версию — бэкенд не отвечает.');
     } finally {
@@ -45,6 +47,8 @@ export default function UpdatePanel() {
       const res  = await fetch(`${API}/check-update`, { cache: 'no-store' });
       const data = await res.json();
       setCheck(data);
+      setInstalled(data.installed);
+      setKnown(!!data.installedKnown);
       if (data.error) setError(data.error);
     } catch {
       setError('Не удалось проверить обновления — бэкенд не отвечает.');
@@ -66,7 +70,7 @@ export default function UpdatePanel() {
   };
 
   const doUpdate = async () => {
-    if (!window.confirm('Обновить проект до последней версии с GitHub? Бэкенд будет перезапущен.')) return;
+    if (!window.confirm('Скачать последнюю версию с GitHub и установить? Бэкенд будет перезапущен.')) return;
     setUpdating(true);
     setError('');
     setPhase('Скачиваю обновление с GitHub…');
@@ -96,13 +100,10 @@ export default function UpdatePanel() {
   const Commit = ({ c }) => (
     <div className="p-2 rounded" style={{ background: codeBg }}>
       <div>
-        <code className="text-info">{c?.hash || '—'}</code>
-        <span className={`ms-2 ${mutedClass}`} style={{ fontSize: '0.85rem' }}>
-          {c?.date}
-        </span>
+        <code className="text-info">{c?.short || '—'}</code>
+        <span className={`ms-2 ${mutedClass}`} style={{ fontSize: '0.85rem' }}>{c?.date}</span>
       </div>
       {c?.subject && <div className="mt-1" style={{ fontSize: '0.9rem' }}>{c.subject}</div>}
-      {c?.author && <div className={mutedClass} style={{ fontSize: '0.8rem' }}>автор: {c.author}</div>}
     </div>
   );
 
@@ -120,7 +121,7 @@ export default function UpdatePanel() {
         </div>
       )}
 
-      {/* Текущая версия */}
+      {/* Установленная версия */}
       <div className={`${cardClass} mb-3`}>
         <div className="card-body">
           <h6 className="card-title">
@@ -130,23 +131,18 @@ export default function UpdatePanel() {
 
           {loading ? (
             <div className={mutedClass}><span className="spinner-border spinner-border-sm me-2" />Загрузка…</div>
-          ) : version?.gitAvailable === false ? (
-            <div className="alert alert-warning py-2 mb-0">
-              <i className="bi bi-exclamation-triangle-fill me-2" />
-              {version.error}
-            </div>
+          ) : known ? (
+            <Commit c={installed} />
           ) : (
-            <>
-              <div className={`${mutedClass} mb-2`} style={{ fontSize: '0.8rem' }}>
-                ветка: <code>{version?.branch}</code>
-              </div>
-              <Commit c={version?.current} />
-            </>
+            <div className="alert alert-warning py-2 mb-0">
+              <i className="bi bi-question-circle-fill me-2" />
+              Версия ещё не зафиксирована. Нажмите «Проверить обновления», затем «Обновить».
+            </div>
           )}
         </div>
       </div>
 
-      {/* Проверка и обновление */}
+      {/* Обновление с GitHub */}
       <div className={cardClass}>
         <div className="card-body">
           <h6 className="card-title">
@@ -158,7 +154,7 @@ export default function UpdatePanel() {
             <button
               className="btn btn-outline-info btn-sm"
               onClick={checkForUpdate}
-              disabled={checking || updating || version?.gitAvailable === false}
+              disabled={checking || updating}
             >
               {checking
                 ? <><span className="spinner-border spinner-border-sm me-1" />Проверяю…</>
@@ -188,7 +184,7 @@ export default function UpdatePanel() {
               <div>
                 <div className="alert alert-success py-2">
                   <i className="bi bi-stars me-2" />
-                  Доступна новая версия! Вы отстаёте на <strong>{check.behind}</strong> коммит(ов).
+                  Доступна новая версия!
                 </div>
                 <div className={`${mutedClass} mb-1`} style={{ fontSize: '0.85rem' }}>Последняя версия на GitHub:</div>
                 <Commit c={check.latest} />
