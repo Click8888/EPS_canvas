@@ -123,7 +123,9 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
       rangeStart: draftRangeStart,
       rangeEnd: draftRangeEnd,
       relativeValue,
-      relativeUnit: draftRelativeUnit
+      relativeUnit: draftRelativeUnit,
+      // В режиме диапазона (с–по) автообновление недоступно — принудительно выключаем.
+      isAutoUpdate: draftRangeMode === 'absolute' ? false : updateConfig.isAutoUpdate
     };
     setUpdateConfig(next);
     persistUpdateConfig(next);
@@ -333,7 +335,8 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   // Подписка на общий координатор автообновления.
   // Запросы всех графиков объединяются в один пакетный запрос к серверу.
   useEffect(() => {
-    if (!updateConfig.isAutoUpdate) return;
+    // Автообновление не работает в режиме диапазона (с–по).
+    if (!updateConfig.isAutoUpdate || updateConfig.rangeMode === 'absolute') return;
 
     pollManager.subscribe(id, {
       // На больших выборках не обновляем чаще ~100 мс, даже если задан меньший интервал.
@@ -349,7 +352,7 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
     });
 
     return () => pollManager.unsubscribe(id);
-  }, [id, updateConfig.isAutoUpdate]);
+  }, [id, updateConfig.isAutoUpdate, updateConfig.rangeMode]);
 
   // При смене интервала на лету просим координатор пересчитать период таймера
   // (период = минимум интервалов всех подписчиков).
@@ -384,6 +387,7 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
   useEffect(() => () => { if (flushRef.current) flushRef.current(); }, []);
 
   const toggleAutoUpdate = useCallback(() => {
+    if (updateConfig.rangeMode === 'absolute') return; // в режиме диапазона автообновления нет
     const next = { ...updateConfig, isAutoUpdate: !updateConfig.isAutoUpdate };
     setUpdateConfig(next);
     persistUpdateConfig(next);
@@ -489,17 +493,19 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
               <option value="relative">Последние N</option>
             </select>
           </label>
-          <label className="chart-control-field" title="Интервал обновления, мс">
-            <i className="bi bi-clock-history"></i>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={draftInterval}
-              onChange={(e) => setDraftInterval(e.target.value.replace(/[^\d]/g, ''))}
-              onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
-            />
-            <span className="chart-control-unit">мс</span>
-          </label>
+          {draftRangeMode !== 'absolute' && (
+            <label className="chart-control-field" title="Интервал обновления, мс">
+              <i className="bi bi-clock-history"></i>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={draftInterval}
+                onChange={(e) => setDraftInterval(e.target.value.replace(/[^\d]/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyUpdateSettings(); }}
+              />
+              <span className="chart-control-unit">мс</span>
+            </label>
+          )}
           {draftRangeMode === 'points' && (
             <label className="chart-control-field" title="Лимит отображаемых точек">
               <i className="bi bi-bar-chart-steps"></i>
@@ -569,10 +575,14 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
           <button
             className={`btn btn-sm update-toggle-btn ${updateConfig.isAutoUpdate ? 'btn-success' : 'btn-outline-secondary'}`}
             onClick={toggleAutoUpdate}
-            disabled={!dataSourceInfo && (!data.lines || data.lines.length === 0)}
-            title={(dataSourceInfo || (data.lines && data.lines.length > 0)) ?
-              (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД") :
-              "Сначала выберите источник данных или добавьте линии"}
+            disabled={updateConfig.rangeMode === 'absolute' || (!dataSourceInfo && (!data.lines || data.lines.length === 0))}
+            title={
+              updateConfig.rangeMode === 'absolute'
+                ? "Автообновление недоступно в режиме «Диапазон (с–по)»"
+                : (dataSourceInfo || (data.lines && data.lines.length > 0))
+                  ? (updateConfig.isAutoUpdate ? "Остановить автообновление" : "Включить автообновление из БД")
+                  : "Сначала выберите источник данных или добавьте линии"
+            }
           >
             <i className={`bi ${updateConfig.isAutoUpdate ? 'bi-pause-circle' : 'bi-play-circle'}`}></i>
           </button>
