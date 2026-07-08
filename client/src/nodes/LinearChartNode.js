@@ -184,10 +184,17 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
 
         // Дельта: после первой загрузки тянем только строки новее последней виденной.
         // Левый край окна (points/relative) обрезает буфер на клиенте — см. applyResults.
+        //
+        // DESC + LIMIT — жёсткий потолок размера ответа. Без него дельта возвращает
+        // ВСЁ, что накопилось в БД между двумя успешными опросами: при затянувшемся
+        // интервале (пропущенный/тяжёлый тик, фоновая вкладка, высокая частота вставки)
+        // разрыв растёт, и ответ пухнет с байт до КБ по мере наполнения таблицы.
+        // Берём только limit самых свежих строк — более старые всё равно были бы
+        // сразу срезаны окном на клиенте, поэтому на отображении графика это не сказывается.
         if (lastSeen != null) {
           return {
             key: lineKey(line.id),
-            sql: norm(`SELECT ${cols} FROM ${line.table} WHERE ${line.xAxis} > '${lastSeen}' ORDER BY 1 ASC`)
+            sql: norm(`SELECT ${cols} FROM ${line.table} WHERE ${line.xAxis} > '${lastSeen}' ORDER BY 1 DESC LIMIT ${limit}`)
           };
         }
 
@@ -254,20 +261,22 @@ const LinearChartNode = ({ data, isConnectable, selected, id, data_normal }) => 
 
       const hadLastSeen = lastSeenRef.current[line.id] != null;
 
-      // парсим только полученные строки (для дельты это считанные единицы)
+      // парсим только полученные строки (для дельты это считанные единицы).
+      // И первая загрузка, и дельта приходят DESC (ORDER BY 1 DESC LIMIT) —
+      // приводим к возрастанию перед склейкой: дальше логика ждёт ASC.
       const parsed = [];
       for (let i = 0; i < rows.length; i++) {
         const p = parseRow(rows[i], line);
         if (p) parsed.push(p);
       }
+      parsed.sort((a, b) => a.time - b.time);
 
       if (!hadLastSeen) {
-        // первая загрузка: сортируем один раз и заменяем буфер
-        parsed.sort((a, b) => a.time - b.time);
+        // первая загрузка: заменяем буфер
         bufferRef.current[line.id] = parsed;
         changed = true;
       } else if (parsed.length > 0) {
-        // дельта уже ASC по запросу — дописываем в конец.
+        // дельта приведена к ASC — дописываем в конец.
         const buf = bufferRef.current[line.id] || [];
         if (buf.length > 0) {
           // Защита от граничного дубля: если БД из-за потери точности метки вернула
