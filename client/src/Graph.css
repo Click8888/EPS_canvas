@@ -1182,3 +1182,127 @@ body.resizing-legend * {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+/* ============================================
+   ИНДИКАТОР - узел «текущее значение + лампа»
+   ============================================ */
+
+.indicator-node {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.indicator-node.resizing {
+  opacity: 0.85;
+}
+
+.indicator-node .chart-node-title i {
+  color: #ffd43b;
+}
+
+/* Правая часть шапки: контролы обновления + кнопка сворачивания */
+.indicator-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.indicator-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.indicator-collapse-btn:hover {
+  color: var(--text-primary);
+  border-color: #4dabf7;
+}
+
+.indicator-node-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden; /* прокрутка живёт на .indicator-items */
+}
+
+/* Список значений: строки делят высоту узла поровну и заполняют его при
+   изменении размера; если строк слишком много — включается прокрутка. */
+.indicator-items {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.indicator-item {
+  flex: 1 1 0;        /* строки поровну делят высоту и растут при увеличении узла */
+  min-height: 36px;   /* но не мельче — иначе появляется прокрутка */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+/* Индикатор состояния — сплошной круг БЕЗ свечения (никаких box-shadow) */
+.indicator-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.indicator-dot.off {
+  opacity: 0.55;
+}
+
+/* Название не растягивается — значение стоит сразу за ним (без пустоты в центре). */
+.indicator-item-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.indicator-item-value {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+  white-space: nowrap;
+}
+
+.indicator-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 8px;
+  margin: auto;
+}
+
+[data-theme="dark"] .indicator-node {
+  background-color: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+

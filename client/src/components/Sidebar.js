@@ -26,6 +26,7 @@ const Sidebar = ({
   onAddChartNode,
   onAddRadialChartNode,
   onAddNotepad,
+  onAddIndicator,
   onDeleteSelectedNode,
   onResetGraph,
   onExportCanvas,
@@ -51,6 +52,8 @@ const Sidebar = ({
   const [seriesStyles, setSeriesStyles] = useState({}); // { chartId: { lineWidth, symbolSize } }
   // стили текста блокнотов { nodeId: { fontFamily, fontSize, bold, italic, underline } }
   const [notepadStyles, setNotepadStyles] = useState({});
+  // настройки индикаторов { nodeId: { table, column, states: [{value, color, label}] } }
+  const [indicatorSettings, setIndicatorSettings] = useState({});
 
   // палитра цветов линий
   const COLOR_PALETTE = [
@@ -122,6 +125,64 @@ const Sidebar = ({
     if (window.updateNotepadData) {
       window.updateNotepadData(id, { [field]: value });
     }
+  };
+
+  // --- Индикатор: источник данных (таблица/столбец) и состояния (значение→цвет) ---
+
+  // Настройки индикатора из data узла, с дефолтами.
+  // columns — список выводимых столбцов; поддерживаем и старый формат (одиночный column).
+  const indicatorFromData = (node) => ({
+    table: node?.data?.table ?? '',
+    columns: Array.isArray(node?.data?.columns)
+      ? node.data.columns
+      : (node?.data?.column ? [node.data.column] : []),
+    states: Array.isArray(node?.data?.states) && node.data.states.length > 0
+      ? node.data.states
+      : [
+          { value: '0', color: '#e74c3c', label: '' },
+          { value: '1', color: '#2ecc71', label: '' }
+        ]
+  });
+
+  // Текущие настройки индикатора: из локального стейта, иначе из data узла.
+  const currentIndicator = (selectedNode && indicatorSettings[selectedNode.id]) || indicatorFromData(selectedNode);
+
+  // Пишем настройки индикатора в локальный стейт и сразу в узел (для сохранения полотна).
+  const updateIndicator = (patch) => {
+    if (!selectedNode) return;
+    const id = selectedNode.id;
+    const next = { ...currentIndicator, ...patch };
+    setIndicatorSettings(prev => ({ ...prev, [id]: next }));
+    if (window.updateIndicatorData) {
+      window.updateIndicatorData(id, patch);
+    }
+  };
+
+  // Добавить/убрать столбец из списка выводимых значений.
+  const toggleIndicatorColumn = (col) => {
+    const columns = currentIndicator.columns.includes(col)
+      ? currentIndicator.columns.filter(c => c !== col)
+      : [...currentIndicator.columns, col];
+    updateIndicator({ columns });
+  };
+
+  // Изменить одно поле состояния (value/color/label) по индексу.
+  const updateIndicatorState = (index, field, value) => {
+    const states = currentIndicator.states.map((s, i) => (i === index ? { ...s, [field]: value } : s));
+    updateIndicator({ states });
+  };
+
+  // Добавить состояние (по умолчанию — следующее целое значение и нейтральный цвет).
+  const addIndicatorState = () => {
+    const states = [...currentIndicator.states, { value: String(currentIndicator.states.length), color: '#3498db', label: '' }];
+    updateIndicator({ states });
+  };
+
+  // Удалить состояние (оставляем минимум одно).
+  const removeIndicatorState = (index) => {
+    if (currentIndicator.states.length <= 1) return;
+    const states = currentIndicator.states.filter((_, i) => i !== index);
+    updateIndicator({ states });
   };
 
    // загрузка таблиц из БД
@@ -296,21 +357,32 @@ const Sidebar = ({
     setCurrentLines(updatedLines);
   };
 
-  // обновить параметры линии
-  const updateLine = (lineId, field, value) => {
+  // обновить сразу несколько полей линии одним апдейтом состояния.
+  // Важно менять их атомарно: два подряд updateLine(...) считают updatedLines от
+  // одного и того же (устаревшего в пределах обработчика) chartLines, поэтому
+  // второй вызов затирал бы изменение первого.
+  const updateLineFields = (lineId, fields) => {
     if (!selectedNode || (selectedNode.type !== 'linearChartNode' && selectedNode.type !== 'radialChartNode')) return;
-    
+
     const chartId = selectedNode.id;
-    const updatedLines = (chartLines[chartId] || []).map(line => 
-      line.id === lineId ? { ...line, [field]: value } : line
+    const updatedLines = (chartLines[chartId] || currentLines).map(line =>
+      line.id === lineId ? { ...line, ...fields } : line
     );
-    
-    setChartLines(prev => ({
-      ...prev,
-      [chartId]: updatedLines
-    }));
-    
+
+    setChartLines(prev => ({ ...prev, [chartId]: updatedLines }));
     setCurrentLines(updatedLines);
+  };
+
+  // обновить один параметр линии
+  const updateLine = (lineId, field, value) => updateLineFields(lineId, { [field]: value });
+
+  // выбор «главного» столбца серии (ось Y у линейного, угол у радиального).
+  // Пока имя серии не задано вручную (nameManual), оно наследует этот столбец —
+  // так подпись серии в легенде совпадает с выбранным значением.
+  const selectPrimaryColumn = (line, field, value) => {
+    const patch = { [field]: value };
+    if (value && !line.nameManual) patch.name = value;
+    updateLineFields(line.id, patch);
   };
 
   // столбцы выбранной таблицы для линии
@@ -334,17 +406,15 @@ const Sidebar = ({
       ) || columns[1] || '';
       
       const chartId = selectedNode.id;
-      const updatedLines = currentLines.map(line => 
-        line.id === lineId 
-          ? { 
-              ...line, 
-              table: tableName,
-              xAxis: xAxis,
-              yAxis: yAxis,
-              name: yAxis || line.name
-            } 
-          : line
-      );
+      const isRadial = selectedNode.type === 'radialChartNode';
+      const updatedLines = currentLines.map(line => {
+        if (line.id !== lineId) return line;
+        const next = { ...line, table: tableName, xAxis, yAxis };
+        // Имя наследуем от оси Y только у линейного графика и только если его
+        // не задавали вручную. У радиального имя берётся от выбранного угла.
+        if (!isRadial && yAxis && !line.nameManual) next.name = yAxis;
+        return next;
+      });
       setChartLines(prev => ({
         ...prev,
         [chartId]: updatedLines
@@ -389,17 +459,15 @@ const Sidebar = ({
         ) || columns[1] || '';
         
         const chartId = selectedNode.id;
-        const updatedLines = currentLines.map(line => 
-          line.id === lineId 
-            ? { 
-                ...line, 
-                table: tableName,
-                xAxis: xAxis,
-                yAxis: yAxis,
-                name: yAxis || line.name
-              } 
-            : line
-        );
+        const isRadial = selectedNode.type === 'radialChartNode';
+        const updatedLines = currentLines.map(line => {
+          if (line.id !== lineId) return line;
+          const next = { ...line, table: tableName, xAxis, yAxis };
+          // Имя наследуем от оси Y только у линейного графика и только если его
+          // не задавали вручную. У радиального имя берётся от выбранного угла.
+          if (!isRadial && yAxis && !line.nameManual) next.name = yAxis;
+          return next;
+        });
         setChartLines(prev => ({
           ...prev,
           [chartId]: updatedLines
@@ -696,6 +764,12 @@ const Sidebar = ({
                   >
                     <i className="bi bi-journal-text"></i> Блокнот
                   </button>
+                  <button
+                    className="btn btn-outline-primary btn-sm w-100 mb-2"
+                    onClick={onAddIndicator}
+                  >
+                    <i className="bi bi-lightbulb"></i> Индикатор
+                  </button>
                 </div>
               </div>
 
@@ -753,7 +827,9 @@ const Sidebar = ({
                 <div className="sidebar-section">
                   <h6 className="sidebar-section-title">
                     <i className="bi bi-node-plus"></i>
-                    {selectedNode.type === 'notepadNode' ? 'Параметры блокнота' : 'Параметры графика'} #{selectedNode.id}
+                    {selectedNode.type === 'notepadNode' ? 'Параметры блокнота'
+                      : selectedNode.type === 'indicatorNode' ? 'Параметры индикатора'
+                      : 'Параметры графика'} #{selectedNode.id}
                   </h6>
                   <div className="selected-node-info">
                     <div className="selected-node-header">
@@ -766,6 +842,7 @@ const Sidebar = ({
                           selectedNode.type === 'radialChartNode' ? 'bi-radar' :
                           selectedNode.type === 'dataSourceNode' ? 'bi-database' :
                           selectedNode.type === 'notepadNode' ? 'bi-journal-text' :
+                          selectedNode.type === 'indicatorNode' ? 'bi-lightbulb' :
                           'bi-gear'
                         }`}></i>
                         {selectedNode.type === 'linearChartNode' && 'Линейный график'}
@@ -773,6 +850,7 @@ const Sidebar = ({
                         {selectedNode.type === 'dataSourceNode' && 'Источник данных'}
                         {selectedNode.type === 'processorNode' && 'Обработчик'}
                         {selectedNode.type === 'notepadNode' && 'Блокнот'}
+                        {selectedNode.type === 'indicatorNode' && 'Индикатор'}
                       </span>
                     </div>
 
@@ -894,7 +972,7 @@ const Sidebar = ({
                                       <input
                                         type="text"
                                         value={line.name}
-                                        onChange={(e) => updateLine(line.id, 'name', e.target.value)}
+                                        onChange={(e) => updateLineFields(line.id, { name: e.target.value, nameManual: true })}
                                         className="form-control form-control-sm"
                                         placeholder="Название линии"
                                         style={{ fontSize: '12px' }}
@@ -937,7 +1015,7 @@ const Sidebar = ({
                                             <select 
                                               className="form-select form-select-sm"
                                               value={line.angleAxis || ''}
-                                              onChange={(e) => updateLine(line.id, 'angleAxis', e.target.value)}
+                                              onChange={(e) => selectPrimaryColumn(line, 'angleAxis', e.target.value)}
                                               disabled={chartParams.isLoadingParams}
                                               style={{ fontSize: '11px' }}
                                             >
@@ -953,12 +1031,7 @@ const Sidebar = ({
                                             <select 
                                               className="form-select form-select-sm"
                                               value={line.magnitudeAxis || ''}
-                                              onChange={(e) => {
-                                                updateLine(line.id, 'magnitudeAxis', e.target.value);
-                                                if (e.target.value && line.name === `Линия ${line.id.split('-')[1]}`) {
-                                                  updateLine(line.id, 'name', e.target.value);
-                                                }
-                                              }}
+                                              onChange={(e) => updateLine(line.id, 'magnitudeAxis', e.target.value)}
                                               disabled={chartParams.isLoadingParams}
                                               style={{ fontSize: '11px' }}
                                             >
@@ -993,12 +1066,7 @@ const Sidebar = ({
                                             <select 
                                               className="form-select form-select-sm"
                                               value={line.yAxis}
-                                              onChange={(e) => {
-                                                updateLine(line.id, 'yAxis', e.target.value);
-                                                if (e.target.value && line.name === `Линия ${line.id.split('-')[1]}`) {
-                                                  updateLine(line.id, 'name', e.target.value);
-                                                }
-                                              }}
+                                              onChange={(e) => selectPrimaryColumn(line, 'yAxis', e.target.value)}
                                               disabled={chartParams.isLoadingParams}
                                               style={{ fontSize: '11px' }}
                                             >
@@ -1118,6 +1186,118 @@ const Sidebar = ({
                         value={currentNotepadStyle.fontSize}
                         onChange={(e) => updateNotepadStyle('fontSize', parseInt(e.target.value, 10))}
                       />
+                    </div>
+                    )}
+
+                    {selectedNode.type === 'indicatorNode' && (
+                    <div className="selected-node-details indicator-params">
+                      <hr className="series-divider" />
+                      <div className="series-section-title">
+                        <i className="bi bi-database me-1"></i>
+                        Источник данных
+                      </div>
+
+                      {/* Таблица */}
+                      <div className="mb-2 mt-2">
+                        <label className="form-label mb-1" style={{ fontSize: '11px' }}>Таблица:</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={currentIndicator.table}
+                          onChange={(e) => updateIndicator({ table: e.target.value, columns: [] })}
+                          disabled={chartParams.isLoadingParams}
+                          style={{ fontSize: '11px' }}
+                        >
+                          <option value="">Выберите таблицу...</option>
+                          {chartParams.tables.map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Столбцы значений — можно выбрать несколько */}
+                      {currentIndicator.table && (
+                        <div className="mb-2">
+                          <label className="form-label mb-1" style={{ fontSize: '11px' }}>Столбцы значений:</label>
+                          <div className="indicator-columns">
+                            {(tableColumnsCache[currentIndicator.table] || []).length === 0 ? (
+                              <div className="series-settings-hint">Нет столбцов</div>
+                            ) : (
+                              (tableColumnsCache[currentIndicator.table] || []).map(c => (
+                                <label key={c} className="indicator-column-check" title={c}>
+                                  <input
+                                    type="checkbox"
+                                    checked={currentIndicator.columns.includes(c)}
+                                    onChange={() => toggleIndicatorColumn(c)}
+                                  />
+                                  <span>{c}</span>
+                                </label>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <hr className="series-divider" />
+                      <div className="series-section-title">
+                        <i className="bi bi-lightbulb me-1"></i>
+                        Состояния и цвета
+                      </div>
+
+                      {/* Список состояний: значение → цвет (+ подпись) */}
+                      <div className="indicator-states">
+                        {currentIndicator.states.map((s, i) => (
+                          <div key={i} className="indicator-state-row">
+                            <input
+                              type="color"
+                              value={s.color}
+                              onChange={(e) => updateIndicatorState(i, 'color', e.target.value)}
+                              className="form-control form-control-color"
+                              style={{ width: '30px', height: '30px', padding: '2px' }}
+                              title="Цвет индикатора для этого значения"
+                            />
+                            <input
+                              type="text"
+                              value={s.value}
+                              onChange={(e) => updateIndicatorState(i, 'value', e.target.value)}
+                              className="form-control form-control-sm"
+                              placeholder="знач."
+                              title="Значение (например 0 или 1)"
+                              style={{ fontSize: '11px' }}
+                            />
+                            <input
+                              type="text"
+                              value={s.label || ''}
+                              onChange={(e) => updateIndicatorState(i, 'label', e.target.value)}
+                              className="form-control form-control-sm"
+                              placeholder="подпись"
+                              title="Подпись состояния (необязательно)"
+                              style={{ fontSize: '11px' }}
+                            />
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => removeIndicatorState(i)}
+                              disabled={currentIndicator.states.length <= 1}
+                              title="Удалить состояние"
+                            >
+                              <i className="bi bi-trash"></i>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        className="btn btn-sm btn-outline-primary w-100 mt-2"
+                        onClick={addIndicatorState}
+                      >
+                        <i className="bi bi-plus-circle me-1"></i>
+                        Добавить состояние
+                      </button>
+
+                      <div className="series-settings-hint mt-2">
+                        Индикатор берёт последнюю строку таблицы и по каждому выбранному
+                        столбцу показывает значение и кружок цвета совпавшего состояния.
+                        Состояния общие для всех столбцов.
+                      </div>
                     </div>
                     )}
                   </div>

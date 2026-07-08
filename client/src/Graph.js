@@ -16,6 +16,7 @@ import { useTheme } from './components/ThemeContext';
 import LinearChartNode from './nodes/LinearChartNode';
 import RadialChartNode from './nodes/RadialChartNode';
 import NotepadNode from './nodes/NotepadNode';
+import IndicatorNode from './nodes/IndicatorNode';
 import { serializeCanvas, downloadConfig, deserializeCanvas } from './services/canvasConfig';
 import { reloadLinesData } from './services/chartData';
 
@@ -125,7 +126,8 @@ const nodeTypes = {
   radialChartNode: RadialChartNode,
   dataSourceNode: DataSourceNode,
   processorNode: ProcessorNode,
-  notepadNode: NotepadNode
+  notepadNode: NotepadNode,
+  indicatorNode: IndicatorNode
 };
 
 const Graph = () => {
@@ -171,6 +173,21 @@ const Graph = () => {
     };
 
     return () => { delete window.updateNotepadData; };
+  }, [setNodes]);
+
+  // Точечное обновление data узла-индикатора (источник и состояния из сайдбара).
+  useEffect(() => {
+    window.updateIndicatorData = (nodeId, patch) => {
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeId && node.type === 'indicatorNode'
+            ? { ...node, data: { ...node.data, ...patch } }
+            : node
+        )
+      );
+    };
+
+    return () => { delete window.updateIndicatorData; };
   }, [setNodes]);
 
   // --- История перемещений узлов: откат по Ctrl+Z, повтор по Ctrl+Shift+Z / Ctrl+Y ---
@@ -299,6 +316,30 @@ const Graph = () => {
     setNodeCounter((prev) => prev + 1);
   }, [nodeCounter, setNodes]);
 
+  const addIndicatorNode = useCallback(() => {
+    const newNodeId = `${nodeCounter}`;
+    setNodes((nds) => [...nds, {
+      id: newNodeId,
+      type: 'indicatorNode',
+      dragHandle: '.chart-node-header',
+      position: { x: Math.random() * 500 + 100, y: Math.random() * 300 + 50 },
+      data: {
+        label: `Индикатор ${nodeCounter}`,
+        width: 400,
+        height: 240,
+        collapsed: false,
+        table: '',
+        columns: [],
+        // два состояния по умолчанию: 0 → красный, 1 → зелёный
+        states: [
+          { value: '0', color: '#e74c3c', label: '' },
+          { value: '1', color: '#2ecc71', label: '' }
+        ]
+      }
+    }]);
+    setNodeCounter((prev) => prev + 1);
+  }, [nodeCounter, setNodes]);
+
   const deleteSelectedNode = useCallback(() => {
     if (selectedNode) {
       setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
@@ -376,6 +417,7 @@ const Graph = () => {
         onAddChartNode={addLinearChartNode}
         onAddRadialChartNode={addRadialChartNode}
         onAddNotepad={addNotepadNode}
+        onAddIndicator={addIndicatorNode}
         onDeleteSelectedNode={deleteSelectedNode}
         onResetGraph={resetGraph}
         onExportCanvas={handleExportCanvas}

@@ -259,6 +259,53 @@
   color: var(--sidebar-text);
 }
 
+/* Индикатор: строка состояния «цвет + значение + подпись + удалить» */
+.indicator-states {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.indicator-state-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.indicator-state-row input[type="text"] {
+  min-width: 0; /* чтобы поля сжимались во flex, а не распирали строку */
+}
+
+.indicator-state-row input.form-control-color {
+  flex-shrink: 0;
+}
+
+/* Индикатор: чеклист выбора столбцов значений */
+.indicator-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 6px;
+}
+
+.indicator-column-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--sidebar-text);
+  cursor: pointer;
+}
+
+.indicator-column-check input {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 .series-settings input[type="range"] {
   width: 100%;
   margin-bottom: 0.6rem;
@@ -612,27 +659,10 @@ body.resizing * {
 }
 
 .lines-list {
-  max-height: 500px;
-  overflow-y: auto;
+  /* Без фиксированной высоты и собственного скролла: список серий растёт по
+     содержимому, а прокручивается весь .sidebar-content. При большом числе
+     серий сайдбар уходит вниз, а не появляется второе вложенное окно со скроллом. */
   padding-right: 5px;
-}
-
-.lines-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.lines-list::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 3px;
-}
-
-.lines-list::-webkit-scrollbar-thumb {
-  background: var(--sidebar-border);
-  border-radius: 3px;
-}
-
-.lines-list::-webkit-scrollbar-thumb:hover {
-  background: var(--sidebar-accent);
 }
 
 .line-card {
